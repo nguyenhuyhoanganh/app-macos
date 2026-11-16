@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds dist/Livewall.app with Command Line Tools only (no Xcode project).
+# Build release và đóng gói dist/Livewall.app, chỉ cần Command Line Tools (không cần Xcode).
+# Dùng --install để cài vào /Applications, thay bản cũ.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -11,18 +12,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Livewall"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
-swift scripts/make-icon.swift "$WORK/icon.png"
-ICONSET="$WORK/AppIcon.iconset"
-mkdir "$ICONSET"
-for points in 16 32 128 256 512; do
-    sips -z "$points" "$points" "$WORK/icon.png" --out "$ICONSET/icon_${points}x${points}.png" >/dev/null
-    double=$((points * 2))
-    sips -z "$double" "$double" "$WORK/icon.png" --out "$ICONSET/icon_${points}x${points}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 codesign --force --sign - --timestamp=none "$APP"
 
@@ -31,3 +21,13 @@ codesign --force --sign - --timestamp=none "$APP"
 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -u "$PWD/$APP" 2>/dev/null || true
 
 echo "Built $APP"
+
+if [[ "${1:-}" == "--install" ]]; then
+    DEST=/Applications/Livewall.app
+    # ⌘Q and the Dock only close Livewall's window, so stop it with a signal.
+    pkill -x Livewall 2>/dev/null || true
+    while pgrep -x Livewall >/dev/null; do sleep 0.2; done
+    rm -rf "$DEST"
+    cp -R "$APP" "$DEST"
+    echo "Installed $DEST"
+fi
