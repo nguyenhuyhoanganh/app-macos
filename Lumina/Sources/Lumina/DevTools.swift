@@ -108,7 +108,10 @@ extension DevTools {
     /// Nền kính do WindowServer ghép nên không có trong ảnh; dùng để soát bố cục và control.
     static func panelSnapshot(to path: String) {
         guard let controller = AppDelegate.statusItem else { exit(2) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { controller.openOnExternalForTesting() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            controller.openOnExternalForTesting()
+            if CommandLine.arguments.contains("--arrange") { controller.layout.arrangeOpen = true }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             guard let view = controller.panelContentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { print("FAILED"); exit(1) }
@@ -214,5 +217,28 @@ extension MenuBarIcon {
         color.setFill()
         NSRect(x: 0, y: 0, width: 18, height: 18).fill(using: .sourceAtop)
         NSGraphicsContext.current?.cgContext.endTransparencyLayer()
+    }
+}
+
+extension DevTools {
+    /// Bật/tắt "Ngăn ngủ" qua AppState rồi đọc `pmset -g assertions` để xác nhận với hệ thống.
+    static func sleepTest() {
+        func assertions() -> String {
+            let p = Process(); let pipe = Pipe()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/pmset"); p.arguments = ["-g", "assertions"]
+            p.standardOutput = pipe; try? p.run(); p.waitUntilExit()
+            let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            return out.split(separator: "\n").filter { $0.contains("Lumina") }.joined(separator: "\n")
+        }
+        let app = Shared.app
+        let before = app.preventSleep
+        app.preventSleep = true
+        let on = assertions()
+        print("bật: " + (on.isEmpty ? "KHÔNG thấy assertion" : on.trimmingCharacters(in: .whitespaces)))
+        app.preventSleep = false
+        let off = assertions()
+        print("tắt: " + (off.isEmpty ? "assertion đã gỡ" : "VẪN còn: \(off)"))
+        app.preventSleep = before
+        exit(!on.isEmpty && off.isEmpty ? 0 : 1)
     }
 }

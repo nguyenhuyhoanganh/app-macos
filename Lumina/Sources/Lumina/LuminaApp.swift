@@ -50,6 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DevTools.menuBarPreview(to: path)
                 exit(0)
             }
+            if args.contains("--sleep-test") {
+                DevTools.sleepTest()
+                return
+            }
             if args.contains("--expand-test") {
                 DevTools.expandTest()
                 return

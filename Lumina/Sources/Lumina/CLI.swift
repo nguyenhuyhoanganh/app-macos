@@ -8,6 +8,7 @@ import LuminaCore
 ///   Lumina set-brightness <displayID> <0-100>
 ///   Lumina set-resolution <displayID> <WxH> [--lowres]
 ///   Lumina login-item [on|off]      (chạy binary bên trong Lumina.app)
+///   Lumina arrange <displayID> <x> <y>   (đặt màn vào toạ độ, tự hít cạnh)
 @MainActor
 enum CLI {
     static func run(_ args: [String]) -> Int32 {
@@ -30,6 +31,7 @@ enum CLI {
                 let kind = switch state.kind { case .system: "system"; case .hardware: "ddc"; case .software: "software" }
                 print("""
                 \(d.id)\t\(d.name)\t\(d.identity.vendorCode ?? "-") vendor=\(d.identity.vendor) model=\(d.identity.model) key=\(d.identity.key)
+                \tbounds=\(Int(d.bounds.minX)),\(Int(d.bounds.minY)) \(Int(d.bounds.width))×\(Int(d.bounds.height))\(d.isMain ? " (chính)" : "")
                 \tmode=\(d.current.resolution.label)\(d.current.isHiDPI ? " HiDPI" : "") @\(Int(d.current.refreshRate.rounded()))Hz \
                 pixels=\(d.current.pixelWidth)x\(d.current.pixelHeight) brightness=\(Int((state.value * 100).rounded()))% (\(kind)) \
                 slider=\(ModeCatalog.sliderModes(d.modes, current: d.current).map(\.label).joined(separator: ", "))
@@ -74,6 +76,17 @@ enum CLI {
             } catch {
                 fputs("\(error.localizedDescription)\n", stderr); return 1
             }
+
+        case "arrange":
+            guard let d = display(args[safe: 1]), let x = args[safe: 2].flatMap(Double.init),
+                  let y = args[safe: 3].flatMap(Double.init) else {
+                fputs("Cách dùng: Lumina arrange <displayID> <x> <y>\n", stderr); return 2
+            }
+            do {
+                let o = try ArrangementService().move(d.id, to: CGPoint(x: x, y: y), in: registry.displays)
+                for (id, p) in o.sorted(by: { $0.key < $1.key }) { print("\(id)\t\(Int(p.x)),\(Int(p.y))") }
+                return 0
+            } catch { fputs("\(error.localizedDescription)\n", stderr); return 1 }
 
         case "login-item":
             if let arg = args[safe: 1] {

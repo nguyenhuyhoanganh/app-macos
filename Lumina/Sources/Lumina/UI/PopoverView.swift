@@ -18,6 +18,7 @@ struct PopoverView: View {
             }
             .padding(.horizontal, 10)
             VStack(spacing: 0) {
+                ToolsSection()
                 if let p = app.pending {
                     revertBar(p).transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                 }

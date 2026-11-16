@@ -191,3 +191,63 @@ func m(_ id: Int32, _ w: Int, _ h: Int, hidpi: Bool = false, hz: Double = 60, gu
                                                  screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982)))
     }
 }
+
+@Suite struct ArrangementPlannerTests {
+    // Bố cục thật: màn tích hợp 1512×982 là màn chính ở (0,0); Kuycon 2560×1440 bên trái.
+    let mac = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    let kuy = CGRect(x: -2560, y: -229, width: 2560, height: 1440)
+
+    @Test func dropRightOfMainSnapsToRightEdge() {
+        let dropped = CGRect(x: 1600, y: 100, width: 2560, height: 1440)
+        let p = ArrangementPlanner.snap(dropped, others: [mac])
+        #expect(p.x == mac.maxX)
+        #expect(touches(CGRect(origin: p, size: dropped.size), mac))
+    }
+
+    @Test func droppedOverlappingIsPushedToNearestFreeEdge() {
+        // Thả Kuycon chồng lên gần mép trái màn chính → hít về bên trái, không chồng.
+        let dropped = CGRect(x: -2400, y: -200, width: 2560, height: 1440)
+        let p = ArrangementPlanner.snap(dropped, others: [mac])
+        let r = CGRect(origin: p, size: dropped.size)
+        #expect(p.x == -2560)
+        #expect(!ArrangementPlanner.overlaps(r, mac))
+    }
+
+    @Test func nearTopEdgeAlignsTops() {
+        let dropped = CGRect(x: 1520, y: 40, width: 1000, height: 600)
+        #expect(ArrangementPlanner.snap(dropped, others: [mac]) == CGPoint(x: 1512, y: 0))
+    }
+
+    @Test func farAwayStillTouchesWithMinimumOverlap() {
+        // Kéo xuống tít dưới: vị trí hợp lệ gần nhất là bám cạnh dưới màn chính, chung ≥ minOverlap.
+        let dropped = CGRect(x: 1512, y: 5000, width: 2560, height: 1440)
+        let r = CGRect(origin: ArrangementPlanner.snap(dropped, others: [mac]), size: dropped.size)
+        #expect(touches(r, mac))
+        #expect(!ArrangementPlanner.overlaps(r, mac))
+    }
+
+    /// Chung một đoạn cạnh dài ≥ minOverlap.
+    func touches(_ a: CGRect, _ b: CGRect) -> Bool {
+        let m = ArrangementPlanner.minOverlap
+        let vertical = (a.maxX == b.minX || a.minX == b.maxX) && min(a.maxY, b.maxY) - max(a.minY, b.minY) >= m
+        let horizontal = (a.maxY == b.minY || a.minY == b.maxY) && min(a.maxX, b.maxX) - max(a.minX, b.minX) >= m
+        return vertical || horizontal
+    }
+
+    @Test func threeDisplaysNeverOverlap() {
+        let third = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+        let dropped = CGRect(x: 1400, y: 50, width: 1280, height: 800)   // chồng lên cả mac và third
+        let p = ArrangementPlanner.snap(dropped, others: [mac, kuy, third])
+        let r = CGRect(origin: p, size: dropped.size)
+        #expect(![mac, kuy, third].contains { ArrangementPlanner.overlaps($0, r) })
+        #expect([mac, kuy, third].contains { touches(r, $0) })
+    }
+
+    @Test func normalizeKeepsMainAtOrigin() {
+        let layout: [UInt32: CGRect] = [1: CGRect(x: 100, y: 50, width: 1512, height: 982),
+                                        5: CGRect(x: 1612.4, y: 10, width: 2560, height: 1440)]
+        let n = ArrangementPlanner.normalize(layout, main: 1)
+        #expect(n[1] == .zero)
+        #expect(n[5] == CGPoint(x: 1512, y: -40))
+    }
+}

@@ -10,6 +10,8 @@ struct DisplaySnapshot: Identifiable, Equatable {
     let isBuiltIn: Bool
     let isMain: Bool
     let sizeMM: CGSize
+    /// Vị trí trong bố cục toàn cục (pt, gốc trên-trái màn chính).
+    let bounds: CGRect
     let current: DisplayModeInfo
     let modes: [DisplayModeInfo]
 
@@ -73,6 +75,7 @@ final class DisplayRegistry {
                 isBuiltIn: builtIn,
                 isMain: CGDisplayIsMain(id) != 0,
                 sizeMM: CGDisplayScreenSize(id),
+                bounds: CGDisplayBounds(id),
                 current: Self.info(currentMode),
                 modes: all.map(Self.info)
             ))

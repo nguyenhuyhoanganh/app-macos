@@ -15,6 +15,7 @@ struct PendingChange {
 final class AppState {
     let registry = DisplayRegistry()
     @ObservationIgnored let brightnessService = BrightnessService()
+    @ObservationIgnored private let sleepGuard = SleepGuard()
     @ObservationIgnored private lazy var modeService = ModeService(registry: registry)
 
     private(set) var brightness: [CGDirectDisplayID: BrightnessState] = [:]
@@ -22,9 +23,22 @@ final class AppState {
     private(set) var now = Date()
     var errorMessage: String?
 
+    /// Công cụ: ngăn màn hình ngủ. Nhớ qua các lần mở app.
+    var preventSleep: Bool = UserDefaults.standard.bool(forKey: "preventSleep") {
+        didSet {
+            guard preventSleep != oldValue else { return }
+            if !sleepGuard.set(preventSleep) {
+                errorMessage = "Không bật được chế độ ngăn ngủ."
+                preventSleep = false
+            }
+            UserDefaults.standard.set(preventSleep, forKey: "preventSleep")
+        }
+    }
+
     @ObservationIgnored private var ticker: Timer?
 
     init() {
+        if preventSleep { sleepGuard.set(true) }
         registry.onChange = { [weak self] in self?.displaysChanged() }
         displaysChanged()
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
@@ -79,6 +93,14 @@ final class AppState {
         } catch {
             errorMessage = error.localizedDescription
         }
+        registry.scheduleReload()
+    }
+
+    // MARK: Sắp xếp màn hình
+
+    func moveDisplay(_ id: CGDirectDisplayID, to proposed: CGPoint) {
+        do { try ArrangementService().move(id, to: proposed, in: registry.displays) }
+        catch { errorMessage = "Không sắp xếp được màn hình: \(error.localizedDescription)" }
         registry.scheduleReload()
     }
 

@@ -61,4 +61,5 @@ p.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 p.arguments = ["-c", "icns", iconset.path, "-o", out.path]
 try p.run(); p.waitUntilExit()
 guard p.terminationStatus == 0 else { fatalError("iconutil lỗi \(p.terminationStatus)") }
+try? FileManager.default.removeItem(at: iconset)   // không để lại thư mục tạm
 print("icns → \(out.path)")

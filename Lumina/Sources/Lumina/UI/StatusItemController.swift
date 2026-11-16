@@ -8,8 +8,14 @@ import SwiftUI
 final class PanelLayout {
     /// Chiều cao tối đa: từ ngay dưới icon tới đáy vùng dùng được của màn.
     var maxHeight: CGFloat = .greatestFiniteMagnitude
-    /// Accordion: chỉ một màn được mở danh sách chế độ tại một thời điểm.
-    var expandedDisplay: CGDirectDisplayID?
+    /// Accordion: chỉ một phần được mở tại một thời điểm — danh sách chế độ của một màn,
+    /// hoặc bản đồ sắp xếp màn hình.
+    var expandedDisplay: CGDirectDisplayID? {
+        didSet { if expandedDisplay != nil { arrangeOpen = false } }
+    }
+    var arrangeOpen = false {
+        didSet { if arrangeOpen { expandedDisplay = nil } }
+    }
     /// Chiều cao phần không phải danh sách (đo từ layout, không phụ thuộc animation).
     var chromeHeight: CGFloat = 0
     var cardBaseHeights: [CGDirectDisplayID: CGFloat] = [:]
