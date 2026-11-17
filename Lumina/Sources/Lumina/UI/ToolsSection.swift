@@ -516,26 +516,79 @@ struct MapTransform {
 }
 
 /// Một màn trên bản đồ. Màn chính có vạch menu bar phía trên.
+/// Một màn trên bản đồ, vẽ theo hình thật như Cài đặt hệ thống: màn có tai thỏ thì khoét rãnh ở giữa
+/// mép trên, màn OLED có Dynamic Island thì có viên thuốc đen dưới mép trên, màn khác là chữ nhật trơn.
+/// Màn chính có vạch menu bar (tách hai bên nếu có tai thỏ/đảo).
 private struct DisplayTile: View {
     let display: DisplaySnapshot
     let highlighted: Bool
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
-        ZStack(alignment: .top) {
-            shape.fill(highlighted ? Theme.accentBlue.opacity(0.35) : Color.primary.opacity(0.16))
-            shape.strokeBorder(highlighted ? Theme.accentBlue : Color.primary.opacity(0.22), lineWidth: 1)
-            if display.isMain {
-                Capsule().fill(Color.primary.opacity(0.55)).frame(height: 3).padding(.horizontal, 6).padding(.top, 4)
+        GeometryReader { geo in
+            let size = geo.size
+            let cut = CutoutMetrics(display.topCutout, in: size)
+            let shape = DisplayTileShape(cutout: display.topCutout)
+            ZStack(alignment: .top) {
+                shape.fill(highlighted ? Theme.accentBlue.opacity(0.62) : Color.primary.opacity(0.16))
+                shape.stroke(highlighted ? Theme.accentBlue : Color.primary.opacity(0.24), lineWidth: 1)
+                if display.isMain { menuBar(shape: shape, size: size) }
+                if case .island = display.topCutout {
+                    Capsule().fill(Color.black.opacity(0.85))
+                        .frame(width: cut.width, height: cut.height)
+                        .padding(.top, cut.height * 0.55)
+                }
+                Text(display.isBuiltIn ? "Tích hợp" : display.name)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(highlighted ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .padding(4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Text(display.isBuiltIn ? "Tích hợp" : display.name)
-                .font(.system(size: 10.5, weight: .medium))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-                .padding(4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: size.width, height: size.height)
+            .contentShape(shape)
         }
-        .contentShape(shape)
+    }
+
+    /// Menu bar của màn chính: dải sáng sát mép trên, trải hết bề ngang, cắt theo hình ô màn
+    /// (nên tai thỏ tự khoét dải làm hai, góc trên bo theo ô) — như Cài đặt hệ thống › Màn hình.
+    private func menuBar(shape: DisplayTileShape, size: CGSize) -> some View {
+        Rectangle()
+            .fill(Color.white.opacity(highlighted ? 0.9 : 0.78))
+            .frame(height: min(max(size.height * 0.07, 3.5), 7))
+            .frame(maxHeight: .infinity, alignment: .top)
+            .clipShape(shape)
+    }
+}
+
+/// Kích thước tai thỏ/đảo trên ô bản đồ: phóng to hơn tỉ lệ thật một chút cho dễ thấy ở ô nhỏ.
+private struct CutoutMetrics {
+    let width: CGFloat
+    let height: CGFloat
+
+    init(_ cutout: TopCutout, in size: CGSize) {
+        let fraction: Double
+        switch cutout {
+        case .none: fraction = 0
+        case .notch(let f), .island(let f): fraction = f
+        }
+        width = min(max(size.width * fraction * 1.35, 14), size.width * 0.45)
+        height = min(max(size.height * 0.075, 4), 9)
+    }
+}
+
+/// Ô màn: chữ nhật bo góc, có tai thỏ thì khoét rãnh (góc dưới bo tròn) ở giữa mép trên.
+private struct DisplayTileShape: Shape {
+    let cutout: TopCutout
+
+    func path(in rect: CGRect) -> Path {
+        let body = Path(roundedRect: rect, cornerRadius: 6, style: .continuous)
+        guard case .notch = cutout else { return body }
+        let m = CutoutMetrics(cutout, in: rect.size)
+        let notch = Path(roundedRect: CGRect(x: rect.midX - m.width / 2, y: rect.minY - m.height,
+                                             width: m.width, height: m.height * 2),
+                         cornerRadius: min(m.height * 0.75, 4), style: .continuous)
+        return body.subtracting(notch)
     }
 }

@@ -398,3 +398,28 @@ func m(_ id: Int32, _ w: Int, _ h: Int, hidpi: Bool = false, hz: Double = 60, gu
         #expect(NitsProfile.defaults(name: "DELL U2720Q", isBuiltIn: false, hardwareControl: true) == .externalDDC)
     }
 }
+
+@Suite struct TopCutoutTests {
+    @Test func macBookProNotchFromSystemValues() {
+        // Số thật của MacBook Pro 14″ M5 Pro: safeTop 32, hai bên tai thỏ 663.5, ngang 1512.
+        let c = TopCutout.detect(safeAreaTop: 32, leftArea: 663.5, rightArea: 663.5, screenWidth: 1512,
+                                 name: "Built-in Retina Display")
+        guard case .notch(let w) = c else { Issue.record("cần tai thỏ, ra \(c)"); return }
+        #expect(abs(w - 185.0 / 1512) < 1e-9)
+    }
+
+    @Test func externalAndNoNotchDisplays() {
+        #expect(TopCutout.detect(safeAreaTop: 0, leftArea: nil, rightArea: nil, screenWidth: 2560, name: "Kuycon P27G") == .none)
+        #expect(TopCutout.detect(safeAreaTop: 0, leftArea: nil, rightArea: nil, screenWidth: 1440, name: "Built-in Display") == .none)
+    }
+
+    @Test func oledProGetsDynamicIsland() {
+        let c = TopCutout.detect(safeAreaTop: 34, leftArea: 690, rightArea: 690, screenWidth: 1512,
+                                 name: "Built-in PROLED XDR Display")
+        guard case .island = c else { Issue.record("cần Dynamic Island, ra \(c)"); return }
+    }
+
+    @Test func missingSideAreasFallBackToTypicalWidth() {
+        #expect(TopCutout.detect(safeAreaTop: 32, leftArea: nil, rightArea: nil, screenWidth: 1512, name: "x") == .notch(width: 0.12))
+    }
+}

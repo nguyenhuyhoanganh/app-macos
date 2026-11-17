@@ -20,6 +20,8 @@ struct DisplaySnapshot: Identifiable, Equatable {
     /// Màn hỗ trợ HDR (công tắc "Dải động cao" của System Settings) và đang bật HDR.
     let hasHDR: Bool
     let hdrOn: Bool
+    /// Tai thỏ / Dynamic Island / không có — để vẽ ô màn đúng hình trên bản đồ.
+    let topCutout: TopCutout
 
     var diagonal: Double? {
         sizeMM.width > 0 ? diagonalInches(widthMM: sizeMM.width, heightMM: sizeMM.height) : nil
@@ -93,7 +95,8 @@ final class DisplayRegistry {
                 rotation: MonitorPanel.rotation(id),
                 canRotate: panel[id]?.canRotate ?? false,
                 hasHDR: panel[id]?.hasHDR ?? false,
-                hdrOn: panel[id]?.hdrOn ?? false
+                hdrOn: panel[id]?.hdrOn ?? false,
+                topCutout: Self.cutout(for: id)
             ))
         }
         snapshots.sort { a, b in a.isBuiltIn != b.isBuiltIn ? a.isBuiltIn : a.id < b.id }
@@ -119,6 +122,24 @@ final class DisplayRegistry {
         DisplayModeInfo(id: m.ioDisplayModeID, width: m.width, height: m.height,
                         pixelWidth: m.pixelWidth, pixelHeight: m.pixelHeight,
                         refreshRate: m.refreshRate, isUsableForDesktopGUI: m.isUsableForDesktopGUI())
+    }
+
+    private static func cutout(for id: CGDirectDisplayID) -> TopCutout {
+        guard let s = NSScreen.screens.first(where: {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id
+        }) else { return .none }
+        // Chỉ để xem trước khi phát triển: LUMINA_FAKE_CUTOUT=island giả màn tai thỏ thành Dynamic Island.
+        if ProcessInfo.processInfo.environment["LUMINA_FAKE_CUTOUT"] == "island",
+           case .notch(let w) = TopCutout.detect(safeAreaTop: Double(s.safeAreaInsets.top),
+                                                 leftArea: s.auxiliaryTopLeftArea.map { Double($0.width) },
+                                                 rightArea: s.auxiliaryTopRightArea.map { Double($0.width) },
+                                                 screenWidth: Double(s.frame.width), name: "") {
+            return .island(width: w)
+        }
+        return TopCutout.detect(safeAreaTop: Double(s.safeAreaInsets.top),
+                                leftArea: s.auxiliaryTopLeftArea.map { Double($0.width) },
+                                rightArea: s.auxiliaryTopRightArea.map { Double($0.width) },
+                                screenWidth: Double(s.frame.width), name: s.localizedName)
     }
 
     private static func name(for id: CGDirectDisplayID, builtIn: Bool) -> String {
