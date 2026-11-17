@@ -526,7 +526,8 @@ extension DevTools {
         default: MainWindowController.shared.nav.selection = app.displays.first { !$0.isBuiltIn }.map { .display($0.id) }
         }
         if let h = ProcessInfo.processInfo.environment["SNAPSHOT_HEIGHT"].flatMap(Double.init) {
-            MainWindowController.shared.setContentSizeForSnapshot(NSSize(width: 920, height: h))
+            let w = ProcessInfo.processInfo.environment["SNAPSHOT_WIDTH"].flatMap(Double.init) ?? 1180
+            MainWindowController.shared.setContentSizeForSnapshot(NSSize(width: w, height: h))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             guard let view = MainWindowController.shared.windowContentView?.superview ?? MainWindowController.shared.windowContentView,

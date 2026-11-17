@@ -45,7 +45,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             .environment(Shared.app)
             .environment(layout)
             .environment(nav)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 700),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
         window.contentViewController = NSHostingController(rootView: root)
@@ -55,9 +55,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 760, height: 560)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.setContentSize(NSSize(width: 920, height: 700))
+        window.setContentSize(NSSize(width: 1180, height: 820))
         window.center()
-        window.setFrameAutosaveName("LuminaMainWindow")
+        window.setFrameAutosaveName("LuminaMainWindowWide")   // tên mới: bỏ kích thước dọc cũ đã lưu
         return window
     }
 
@@ -128,18 +128,15 @@ struct MainWindowView: View {
                     ForEach(app.displays) { d in
                         SidebarRow(title: ToolsSection.shortName(d),
                                    subtitle: d.current.resolution.label + (d.isMain ? " · màn chính" : ""),
-                                   symbol: d.isBuiltIn ? "laptopcomputer" : "display",
-                                   colors: [Color(red: 0.35, green: 0.66, blue: 1), Color(red: 0.18, green: 0.45, blue: 0.88)])
+                                   symbol: d.isBuiltIn ? "laptopcomputer" : "display")
                             .tag(WindowPane.display(d.id))
                             .accessibilityLabel(d.name)
                     }
                 }
                 Section("Lumina") {
-                    SidebarRow(title: "Công cụ", symbol: "wrench.and.screwdriver.fill",
-                               colors: [Color(red: 1, green: 0.68, blue: 0.27), Color(red: 0.95, green: 0.48, blue: 0.1)])
+                    SidebarRow(title: "Công cụ", symbol: "wrench.and.screwdriver")
                         .tag(WindowPane.tools)
-                    SidebarRow(title: "Chung", symbol: "gearshape.fill",
-                               colors: [Color(white: 0.62), Color(white: 0.44)])
+                    SidebarRow(title: "Chung", symbol: "gearshape")
                         .tag(WindowPane.general)
                 }
             }
@@ -147,7 +144,7 @@ struct MainWindowView: View {
         } detail: {
             // Mỗi trang là một Form .grouped (tự cuộn) như Cài đặt hệ thống.
             detail
-                .frame(maxWidth: 680)
+                .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
                 .safeAreaInset(edge: .bottom) { banners }
         }
@@ -199,22 +196,20 @@ struct MainWindowView: View {
     }
 }
 
-/// Dòng ở thanh bên kiểu Cài đặt hệ thống: ô icon màu bo góc + tên (+ dòng phụ).
+/// Dòng ở thanh bên: biểu tượng SF Symbol đơn sắc (hierarchical, như thanh bên Finder/Mail trên
+/// macOS 26/27) + tên (+ dòng phụ). Không dùng ô màu.
 private struct SidebarRow: View {
     let title: String
     var subtitle: String?
     let symbol: String
-    let colors: [Color]
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 24, height: 24)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+                .font(.system(size: 15, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).lineLimit(1)
                 if let subtitle {

@@ -14,20 +14,52 @@ struct DisplayPaneV2: View {
 
     private static let angles = [0, 90, 180, 270]
 
+    /// Từ bề rộng này trở lên: bày ngang hai cột thay vì một cột dài phải cuộn.
+    static let wideWidth: CGFloat = 860
+
     var body: some View {
-        Form {
-            Section {
-                StatsRow(display: display)
-            } header: {
-                DisplayHeader(display: display)
+        GeometryReader { geo in
+            if geo.size.width >= Self.wideWidth {
+                // Ngang: tên + số liệu trải hết bề rộng; dưới là hai cột (mỗi cột một Form gốc).
+                VStack(spacing: 0) {
+                    // Đặt ngoài Form: Form giới hạn bề rộng nội dung nên sẽ không thẳng mép với hai cột.
+                    VStack(alignment: .leading, spacing: 12) {
+                        DisplayHeader(display: display)
+                        StatsRow(display: display)
+                            .padding(.horizontal, 4).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.fill.quaternary))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator.opacity(0.5), lineWidth: 0.5))
+                    }
+                    .padding(.horizontal, 21)
+                    .padding(.top, 20)
+                    HStack(alignment: .top, spacing: 0) {
+                        // Chia cho hai cột dài gần bằng nhau (đo theo chiều cao từng nhóm).
+                        // Màn ngoài: trái = độ sáng, độ sáng thật, bố cục; phải = độ phân giải, HDR và màu.
+                        // Màn tích hợp (không có nhóm HDR): trái = độ sáng, độ phân giải; phải = độ sáng thật, bố cục.
+                        Form {
+                            brightnessSection
+                            if display.isBuiltIn { resolutionSection } else { nitsSection; layoutSection }
+                        }
+                        .formStyle(.grouped)
+                        Form {
+                            if display.isBuiltIn { nitsSection; layoutSection } else { resolutionSection; colorSection }
+                        }
+                        .formStyle(.grouped)
+                    }
+                    .padding(.top, -6)
+                }
+            } else {
+                Form {
+                    Section { StatsRow(display: display) } header: { DisplayHeader(display: display) }
+                    brightnessSection
+                    resolutionSection
+                    layoutSection
+                    if !display.isBuiltIn { colorSection }
+                    nitsSection
+                }
+                .formStyle(.grouped)
             }
-            brightnessSection
-            resolutionSection
-            layoutSection
-            if !display.isBuiltIn { colorSection }
-            nitsSection
         }
-        .formStyle(.grouped)
         .onAppear { if !display.isBuiltIn { app.refreshWhiteBalance(display) } }
     }
 
@@ -45,9 +77,6 @@ struct DisplayPaneV2: View {
                     Image(systemName: "sun.max.fill")
                 }
                 .accessibilityLabel("Độ sáng \(display.name) (cửa sổ)")
-                LabeledContent("Điều khiển") {
-                    Text("\(kindLabel(state.kind))\(app.nits(for: display).map { " · ≈ \(Int($0.rounded())) nit" } ?? "")")
-                }
                 if app.canSyncBrightness {
                     Toggle(isOn: Binding(get: { app.brightnessSync }, set: { app.brightnessSync = $0 })) {
                         Text(isSource ? "Đồng bộ độ sáng giữa các màn"
@@ -58,14 +87,6 @@ struct DisplayPaneV2: View {
                     .accessibilityLabel("Đồng bộ độ sáng (cửa sổ \(display.name))")
                 }
             }
-        }
-    }
-
-    private func kindLabel(_ k: BrightnessKind) -> String {
-        switch k {
-        case .system: "Hệ thống"
-        case .hardware: "Phần cứng (DDC)"
-        case .software: "Phần mềm"
         }
     }
 
@@ -108,10 +129,6 @@ struct DisplayPaneV2: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityLabel("Tỉ lệ \(display.name) (cửa sổ)")
-            }
-            LabeledContent("Tần số quét") {
-                Text(ModeCatalog.refreshRates(for: display.current.resolution, in: display.modes)
-                    .map { "\(Int($0.rounded())) Hz" }.joined(separator: " · "))
             }
         }
     }
@@ -184,16 +201,15 @@ struct DisplayPaneV2: View {
         }
     }
 
+    /// Thanh trải hết dòng (không thụt vào giữa như LabeledContent): nhãn cố định bên trái, số bên phải.
     private func gainSlider(_ title: String, value: Int, set: @escaping (Int) -> Void) -> some View {
-        LabeledContent(title) {
-            HStack {
-                // Không đặt step: 100 vạch chia sẽ dày đặc; làm tròn khi đặt giá trị.
-                Slider(value: Binding(get: { Double(value) }, set: { set(Int($0.rounded())) }), in: 0...100)
-                    .labelsHidden()
-                    .accessibilityLabel("\(title) \(display.name)")
-                Text("\(value)").monospacedDigit().frame(width: 28, alignment: .trailing)
-            }
-            .frame(maxWidth: 260)
+        HStack(spacing: 12) {
+            Text(title).frame(width: 36, alignment: .leading)
+            // Không đặt step: 100 vạch chia sẽ dày đặc; làm tròn khi đặt giá trị.
+            Slider(value: Binding(get: { Double(value) }, set: { set(Int($0.rounded())) }), in: 0...100)
+                .labelsHidden()
+                .accessibilityLabel("\(title) \(display.name)")
+            Text("\(value)").monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
         }
     }
 
@@ -222,15 +238,15 @@ struct DisplayPaneV2: View {
                       systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
             }
-        } header: {
-            Text("Độ sáng thật")
-        } footer: {
-            HStack {
-                Text("Số nit là ước lượng theo thông số hãng.").foregroundStyle(.secondary)
-                Spacer()
+            LabeledContent {
                 Button("Về mặc định") { app.resetProfile(display) }
                     .disabled(app.nitsProfiles[display.identity.key] == nil)
+            } label: {
+                Text("Thông số hãng")
+                Text("Số nit là ước lượng theo thông số hãng.")
             }
+        } header: {
+            Text("Độ sáng thật")
         }
     }
 
@@ -369,54 +385,91 @@ struct ToolsPaneV2: View {
     private static let angles = [0, 90, 180, 270]
 
     var body: some View {
-        Form {
-            Section {
-                Toggle(isOn: Binding(get: { app.preventSleep }, set: { app.preventSleep = $0 })) {
-                    Text("Ngăn ngủ")
-                    Text("Giữ màn hình và máy không tự ngủ khi để yên.")
-                }
-                .accessibilityLabel("Ngăn ngủ")
-                if app.canSyncBrightness {
-                    Toggle(isOn: Binding(get: { app.brightnessSync }, set: { app.brightnessSync = $0 })) {
-                        Text("Đồng bộ độ sáng")
-                        Text("Các màn khác sáng bằng số nit của \(app.syncSource.map(ToolsSection.shortName) ?? "màn chuẩn").")
+        GeometryReader { geo in
+            if geo.size.width >= DisplayPaneV2.wideWidth {
+                // Ngang: cột trái là các công tắc + xoay, cột phải là bản đồ sắp xếp.
+                VStack(alignment: .leading, spacing: 0) {
+                    PaneHeader(title: "Công cụ", subtitle: "Dùng chung với popover trên menu bar")
+                        .padding(.horizontal, 30).padding(.top, 22)
+                    // Hai cột dài gần bằng nhau: trái là công tắc + phản chiếu + xoay, phải là bản đồ + màn chính.
+                    HStack(alignment: .top, spacing: 0) {
+                        Form { switchesSection; mirrorSection; rotateSection }.formStyle(.grouped)
+                        Form { arrangeSection(includeMirror: false, mapHeight: 290) }.formStyle(.grouped)
                     }
-                    .accessibilityLabel("Đồng bộ độ sáng")
                 }
-            } header: {
-                PaneHeader(title: "Công cụ", subtitle: "Dùng chung với popover trên menu bar")
+            } else {
+                Form {
+                    Section { switchesRows } header: {
+                        PaneHeader(title: "Công cụ", subtitle: "Dùng chung với popover trên menu bar")
+                    }
+                    arrangeSection(includeMirror: true, mapHeight: ToolsSection.mapHeight + 40)
+                    rotateSection
+                }
+                .formStyle(.grouped)
             }
-            Section("Sắp xếp màn hình") {
-                DisplayMapView().frame(height: ToolsSection.mapHeight).padding(.vertical, 6)
-                if app.displays.count > 1 {
-                    Picker("Màn chính", selection: Binding(
-                        get: { app.displays.first(where: \.isMain)?.id ?? 0 },
-                        set: { id in if let d = app.displays.first(where: { $0.id == id }) { app.makeMain(d) } })) {
-                        ForEach(app.displays) { Text(ToolsSection.shortName($0)).tag($0.id) }
-                    }
-                    .accessibilityLabel("Màn chính (cửa sổ)")
-                }
-                if app.canMirror {
-                    Toggle(isOn: Binding(get: { app.isMirroring }, set: { app.setMirroring($0) })) {
-                        Text("Phản chiếu màn hình")
-                        Text("Tắt: mỗi màn một desktop (mở rộng).")
-                    }
-                    .accessibilityLabel("Phản chiếu màn hình")
-                }
+        }
+    }
+
+    private var switchesSection: some View {
+        Section("Độ sáng và giấc ngủ") { switchesRows }
+    }
+
+    @ViewBuilder private var switchesRows: some View {
+        Toggle(isOn: Binding(get: { app.preventSleep }, set: { app.preventSleep = $0 })) {
+            Text("Ngăn ngủ")
+            Text("Giữ màn hình và máy không tự ngủ khi để yên.")
+        }
+        .accessibilityLabel("Ngăn ngủ")
+        if app.canSyncBrightness {
+            Toggle(isOn: Binding(get: { app.brightnessSync }, set: { app.brightnessSync = $0 })) {
+                Text("Đồng bộ độ sáng")
+                Text("Các màn khác sáng bằng số nit của \(app.syncSource.map(ToolsSection.shortName) ?? "màn chuẩn").")
             }
-            let rotatable = app.displays.filter(\.canRotate)
-            if MonitorPanel.canRotateAtAll, !rotatable.isEmpty {
-                Section("Xoay màn hình") {
-                    ForEach(rotatable) { d in
-                        Picker(ToolsSection.shortName(d), selection: Binding(get: { d.rotation }, set: { app.rotate(d, to: $0) })) {
-                            ForEach(Self.angles, id: \.self) { Text($0 == 0 ? "Chuẩn" : "\($0)°").tag($0) }
-                        }
-                        .accessibilityLabel("Xoay \(d.name) (công cụ)")
+            .accessibilityLabel("Đồng bộ độ sáng")
+        }
+    }
+
+    @ViewBuilder private var mirrorSection: some View {
+        if app.canMirror {
+            Section("Phản chiếu") { mirrorToggle }
+        }
+    }
+
+    private var mirrorToggle: some View {
+        Toggle(isOn: Binding(get: { app.isMirroring }, set: { app.setMirroring($0) })) {
+            Text("Phản chiếu màn hình")
+            Text("Tắt: mỗi màn một desktop (mở rộng).")
+        }
+        .accessibilityLabel("Phản chiếu màn hình")
+    }
+
+    private func arrangeSection(includeMirror: Bool, mapHeight: CGFloat) -> some View {
+        Section("Sắp xếp màn hình") {
+            DisplayMapView().frame(height: mapHeight).padding(.vertical, 6)
+            if app.displays.count > 1 {
+                Picker("Màn chính", selection: Binding(
+                    get: { app.displays.first(where: \.isMain)?.id ?? 0 },
+                    set: { id in if let d = app.displays.first(where: { $0.id == id }) { app.makeMain(d) } })) {
+                    ForEach(app.displays) { Text(ToolsSection.shortName($0)).tag($0.id) }
+                }
+                .accessibilityLabel("Màn chính (cửa sổ)")
+            }
+            if includeMirror && app.canMirror { mirrorToggle }
+        }
+    }
+
+    @ViewBuilder private var rotateSection: some View {
+        let rotatable = app.displays.filter(\.canRotate)
+        if MonitorPanel.canRotateAtAll, !rotatable.isEmpty {
+            Section("Xoay màn hình") {
+                ForEach(rotatable) { d in
+                    Picker(ToolsSection.shortName(d), selection: Binding(get: { d.rotation }, set: { app.rotate(d, to: $0) })) {
+                        ForEach(Self.angles, id: \.self) { Text($0 == 0 ? "Chuẩn" : "\($0)°").tag($0) }
                     }
+                    .accessibilityLabel("Xoay \(d.name) (công cụ)")
                 }
             }
         }
-        .formStyle(.grouped)
     }
 }
 
