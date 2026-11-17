@@ -78,6 +78,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DevTools.windowSnapshot(to: path, pane: args[safe: i + 2] ?? "display")
                 return
             }
+            if args.contains("--main-trace") {
+                DevTools.mainTrace(builtIn: args.contains("--builtin"))
+                return
+            }
             if args.contains("--profile") {
                 DevTools.profile()
                 return

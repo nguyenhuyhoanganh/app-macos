@@ -224,6 +224,29 @@ func m(_ id: Int32, _ w: Int, _ h: Int, hidpi: Bool = false, hz: Double = 60, gu
         #expect(f.height == PopoverPlacement.maxHeight(anchor: icon, visibleFrame: small))
     }
 
+    @Test(arguments: [3545.0, 3900.0, 2600.0])
+    func iconOnAnotherMenuBarKeepsDistanceFromRightEdge(iconX: CGFloat) {
+        // Kuycon làm màn chính (0…2560, menu bar 30), MacBook bên phải (2560…4072, menu bar có tai thỏ 37);
+        // icon thật nằm trên menu bar MacBook, cửa sổ icon thò dưới đáy menu bar 2 pt (như đo thật).
+        let kuycon = CGRect(x: 0, y: 0, width: 2560, height: 1440)
+        let kuyconVisible = CGRect(x: 0, y: 0, width: 2560, height: 1410)
+        let mac = CGRect(x: 2560, y: 0, width: 1512, height: 982)
+        let macVisible = CGRect(x: 2560, y: 0, width: 1512, height: 945)
+        let icon = CGRect(x: iconX, y: 943, width: 38, height: 33)
+        let a = PopoverPlacement.mirroredAnchor(icon, from: mac, sourceVisibleFrame: macVisible,
+                                                to: kuycon, targetVisibleFrame: kuyconVisible)
+        #expect(kuycon.maxX - a.minX == mac.maxX - icon.minX)
+        #expect(a.minY == kuyconVisible.maxY - 2)
+        #expect(a.size == icon.size)
+        // Cùng màn: giữ nguyên.
+        #expect(PopoverPlacement.mirroredAnchor(icon, from: mac, sourceVisibleFrame: macVisible,
+                                                to: mac, targetVisibleFrame: macVisible) == icon)
+        // Menu bar tự ẩn (vùng dùng được tới tận mép trên): bám mép trên như màn nguồn.
+        let hidden = PopoverPlacement.mirroredAnchor(icon, from: mac, sourceVisibleFrame: mac,
+                                                     to: kuycon, targetVisibleFrame: kuycon)
+        #expect(kuycon.maxY - hidden.minY == mac.maxY - icon.minY)
+    }
+
     @Test func iconWithoutScreenIsRejected() {
         // Lúc đổi độ phân giải icon có thể tạm nằm ngoài mọi màn ({2864,110} trong trace).
         #expect(!PopoverPlacement.isUsableAnchor(CGRect(x: 2864, y: 110, width: 34, height: 33), screenFrame: nil))

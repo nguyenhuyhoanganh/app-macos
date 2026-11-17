@@ -108,6 +108,8 @@ extension DevTools {
     /// Nền kính do WindowServer ghép nên không có trong ảnh; dùng để soát bố cục và control.
     static func panelSnapshot(to path: String) {
         guard let controller = AppDelegate.statusItem else { exit(2) }
+        // Ảnh không có nền kính (nền trắng): ép giao diện sáng để chữ/nền phụ hiện rõ khi soát.
+        if ProcessInfo.processInfo.environment["SNAPSHOT_LIGHT"] != nil { NSApp.appearance = NSAppearance(named: .aqua) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             controller.openOnExternalForTesting()
             let args = CommandLine.arguments
@@ -302,34 +304,38 @@ extension DevTools {
             (4.2, { check("bấm hàng Ngăn ngủ → bật lại", app.preventSleep)
                     check("icon phát sáng hiện lại", find("Tắt Ngăn ngủ") != nil)
                     _ = click("Sắp xếp màn hình") }),
-            (5.0, { check("bấm hàng Sắp xếp → bản đồ sổ ra", layout.arrangeOpen)
+            (5.0, { check("bấm hàng Sắp xếp → mở trang Sắp xếp", layout.arrangeOpen)
+                    check("trang thay chỗ danh sách (không còn hàng Ngăn ngủ)", find("Ngăn ngủ") == nil)
+                    check("trang có nút quay lại", find("Quay lại danh sách công cụ") != nil)
+                    _ = click("Quay lại danh sách công cụ") }),
+            (5.8, { check("bấm quay lại → về danh sách", layout.openTool == nil && find("Ngăn ngủ") != nil)
                     layout.expandedDisplay = CGMainDisplayID() }),
-            (5.6, { check("mở danh sách chế độ → mục Công cụ tự đóng (accordion)", !layout.toolsOpen)
+            (6.4, { check("mở danh sách chế độ → mục Công cụ tự đóng (accordion)", !layout.toolsOpen)
                     layout.expandedDisplay = nil
                     _ = click("Tắt Ngăn ngủ") }),
-            (6.3, { check("icon phát sáng tắt được cả khi mục đang đóng", !app.preventSleep && !layout.toolsOpen)
+            (7.1, { check("icon phát sáng tắt được cả khi mục đang đóng", !app.preventSleep && !layout.toolsOpen)
                     app.preventSleep = before
                     withAnimation(PopoverView.expand) { layout.toolsOpen = true } }),
         ]
         // Xoay + HiDPI trên màn ngoài (có thật trên máy, đổi xong trả lại).
         let ext = { app.displays.first { !$0.isBuiltIn } }
         let extName = ext().map(ToolsSection.shortName) ?? "?"
-        var end = 7.0
+        var end = 7.8
         if let e = ext(), e.canRotate, MonitorPanel.canRotateAtAll {
             let originalRotation = e.rotation
             steps += [
-                (7.0, { _ = click("Xoay màn hình") }),
-                (7.8, { check("bấm hàng Xoay → bảng xoay sổ ra", layout.openTool == "rotate")
+                (7.8, { _ = click("Xoay màn hình") }),
+                (8.6, { check("bấm hàng Xoay → mở trang Xoay", layout.openTool == "rotate")
                         _ = click("Xoay \(extName) 90 độ") }),
-                (11.0, { check("chọn 90° → màn xoay 90°", ext()?.rotation == 90)
+                (11.8, { check("chọn 90° → màn xoay 90°", ext()?.rotation == 90)
                          check("xoay chờ xác nhận (tự hoàn tác 15 giây)", app.pending.map { $0.revert == .rotation(originalRotation) } ?? false)
                          check("icon phát sáng của Xoay hiện", find("Bỏ xoay màn hình") != nil)
                          _ = click("Bỏ xoay màn hình") }),
-                (14.0, { check("bấm icon phát sáng → màn về 0°", ext()?.rotation == 0)
+                (14.8, { check("bấm icon phát sáng → màn về 0°", ext()?.rotation == 0)
                          check("không còn chờ xác nhận", app.pending == nil)
                          check("icon phát sáng của Xoay biến mất", find("Bỏ xoay màn hình") == nil) }),
             ]
-            end = 14.5
+            end = 15.3
         }
         if let e = ext(), let target = ModeCatalog.hidpiCounterpart(e.modes, current: e.current, hidpi: !e.current.resolution.isHiDPI) {
             let wasHiDPI = e.current.resolution.isHiDPI
@@ -367,24 +373,33 @@ extension DevTools {
                 ]
                 end += 6.5
             }
+            var fromRight: CGFloat = 0
+            func anchored(_ label: String) {
+                let (ok, detail) = popoverAnchoredCheck(display: e.id, fromRight: fromRight)
+                check("\(label): popover vẫn neo dưới icon (\(detail))", ok)
+            }
             steps += [
                 (end, { withAnimation(PopoverView.expand) { layout.toolsOpen = true; layout.openTool = "arrange" } }),
-                (end + 1, { _ = click("Màn chính \(extName)") }),
+                (end + 1, { fromRight = popoverFromRight(display: e.id) ?? 0
+                            _ = click("Màn chính \(extName)") }),
                 (end + 4, { check("chọn màn chính → \(extName) là màn chính", ext()?.isMain == true)
                             check("popover vẫn mở sau khi đổi màn chính", c.isShown)
+                            anchored("màn chính \(extName)")
                             _ = click("Màn chính Tích hợp") }),
                 (end + 7, { check("đổi lại → màn tích hợp là màn chính", app.displays.first(where: \.isMain)?.isBuiltIn == true)
+                            anchored("màn chính Tích hợp")
                             check("vị trí màn ngoài như cũ \(originalBounds)", ext()?.bounds == originalBounds)
-                            _ = click("Phản chiếu màn hình") }),
-                (end + 12, { check("bật phản chiếu", app.isMirroring)
+                            _ = click("Quay lại danh sách công cụ") }),
+                (end + 8, { _ = click("Phản chiếu màn hình") }),
+                (end + 13, { check("bật phản chiếu", app.isMirroring)
                              check("icon phát sáng của Phản chiếu hiện", find("Tắt phản chiếu") != nil)
                              _ = click("Tắt phản chiếu") }),
-                (end + 18, { check("bấm icon phát sáng → tắt phản chiếu (mở rộng)", !app.isMirroring)
+                (end + 19, { check("bấm icon phát sáng → tắt phản chiếu (mở rộng)", !app.isMirroring)
                              check("màn ngoài về vị trí cũ (\(ext()?.bounds ?? .zero))", ext()?.bounds == originalBounds)
                              check("màn ngoài về độ phân giải cũ (\(ext()?.current.resolution.label ?? "?"))",
                                    ext()?.current.resolution == originalRes) }),
             ]
-            end += 18.5
+            end += 19.5
         }
         steps.append((end, {
             // Dọn: dù bước nào hỏng cũng trả màn về như cũ trước khi thoát.
@@ -490,6 +505,7 @@ extension DevTools {
                      check("thanh “Giữ…?” ở popover biến mất theo", axFind("Hoàn tác", in: pop()) == nil)
                      app.preventSleep = true
                      MainWindowController.shared.nav.selection = .tools
+                     c.layout.openTool = nil      // về danh sách công cụ (trang Xoay đang thay chỗ nó)
                      c.openOnExternalForTesting() }),
             (11.0, { axClick("Ngăn ngủ", in: pop()) }),
             (12.0, { check("tắt Ngăn ngủ từ popover", !app.preventSleep)
@@ -775,6 +791,71 @@ extension DevTools {
         at(idle) {
             print(String(format: "cuối (đã ngồi yên %.0f s): %.1f MB", idle, footprintMB()))
             exit(0)
+        }
+    }
+}
+
+extension DevTools {
+    /// Popover có neo đúng dưới icon trên màn `display` không, đo bằng toạ độ WindowServer đang vẽ
+    /// (CGWindowList + CGDisplayBounds, gốc trên-trái) — không qua NSScreen, vì AppKit có lúc báo đổi màn
+    /// trễ vài giây. Đúng: tấm kính giữ khoảng cách tới mép phải màn như lúc mở (icon xếp từ mép phải)
+    /// và mép trên ngay dưới menu bar.
+    static func popoverAnchoredCheck(display: CGDirectDisplayID, fromRight: CGFloat) -> (ok: Bool, detail: String) {
+        guard let c = AppDelegate.statusItem else { return (false, "không có icon") }
+        guard let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(c.panelWindowNumber)) as? [[String: Any]])?.first,
+              let dict = info[kCGWindowBounds as String] as? NSDictionary,
+              let win = CGRect(dictionaryRepresentation: dict) else { return (false, "không đọc được cửa sổ") }
+        let i = StatusItemController.shadowInset
+        let glassMidX = win.minX + win.width / 2
+        let glassTop = win.minY + i
+        let screen = CGDisplayBounds(display)
+        let dx = screen.maxX - glassMidX, below = glassTop - screen.minY
+        let ok = c.isShown && screen.contains(CGPoint(x: glassMidX, y: glassTop + 1))
+            && abs(dx - fromRight) < 1.5 && below > 20 && below < 50
+        return (ok, "cách mép phải \(Int(dx)) (cần \(Int(fromRight))), dưới mép trên \(Int(below))")
+    }
+
+    static func popoverFromRight(display: CGDirectDisplayID) -> CGFloat? {
+        guard let c = AppDelegate.statusItem,
+              let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(c.panelWindowNumber)) as? [[String: Any]])?.first,
+              let dict = info[kCGWindowBounds as String] as? NSDictionary,
+              let win = CGRect(dictionaryRepresentation: dict) else { return nil }
+        return CGDisplayBounds(display).maxX - win.midX
+    }
+
+    /// Chẩn đoán: popover đang mở, đổi màn chính sang màn ngoài rồi đổi lại; mỗi 0,1 s in vị trí tấm kính
+    /// (chỉ khi đổi) và kiểm tra nó còn neo dưới icon trên màn đã mở. `builtIn`: mở trên màn tích hợp.
+    static func mainTrace(builtIn: Bool) {
+        let app = Shared.app
+        guard let c = AppDelegate.statusItem,
+              let ext = app.displays.first(where: { !$0.isBuiltIn }),
+              let mac = app.displays.first(where: \.isBuiltIn) else { print("cần 2 màn"); exit(2) }
+        let home = builtIn ? mac.id : ext.id
+        let start = Date()
+        var last = "", bad = 0, fromRight: CGFloat?
+        var phase = "mở"
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in MainActor.assumeIsolated {
+            guard let r = fromRight else { return }
+            let (ok, detail) = popoverAnchoredCheck(display: home, fromRight: r)
+            let line = "\(phase): \(detail) · \(ok ? "OK" : "LỆCH")"
+            if line != last { print(String(format: "%5.1f ", Date().timeIntervalSince(start)) + line); fflush(stdout); last = line }
+            if !ok && phase.hasSuffix("ổn") { bad += 1 }
+        } }
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in
+            print(String(format: "%5.1f   ---- didChangeScreenParameters", Date().timeIntervalSince(start))); fflush(stdout)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { c.openOnExternalForTesting(builtIn: builtIn) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            fromRight = popoverFromRight(display: home)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { phase = "→ngoài"; app.makeMain(ext) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) { phase = "→ngoài ổn" }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.5) { phase = "→tích hợp"; app.makeMain(mac) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12.5) { phase = "→tích hợp ổn" }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 14.5) {
+            if let m = app.displays.first(where: \.isBuiltIn), !m.isMain { app.makeMain(m) }
+            print(bad == 0 ? "KẾT QUẢ: neo đúng" : "KẾT QUẢ: lệch \(bad) mẫu sau khi đã ổn định")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { exit(bad == 0 ? 0 : 1) }
         }
     }
 }

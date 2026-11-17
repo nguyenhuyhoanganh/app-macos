@@ -2,9 +2,10 @@ import LuminaCore
 import SwiftUI
 
 /// Một công cụ trong mục "Công cụ". Thêm công cụ mới = thêm một `ToolItem` vào `ToolsSection.tools`
-/// (và, nếu có phần sổ ra, một nhánh trong `detail(for:)` / `detailHeight(for:)`).
+/// (và, nếu có trang riêng, một nhánh trong `pageContent(for:)` / `pageContentHeight(for:)`).
 /// - `.toggle`: bật/tắt (vd Ngăn ngủ).
-/// - `.disclosure`: bấm để sổ phần riêng ngay dưới hàng của nó (vd bản đồ Sắp xếp, bảng Xoay).
+/// - `.disclosure`: bấm để mở trang riêng của nó (vd bản đồ Sắp xếp, bảng Xoay). Trang thay chỗ danh sách
+///   ngay trong mục, có nút quay lại — không sổ dài thêm xuống dưới.
 /// Công cụ đang có hiệu lực (`active`) và có `quickOff` thì hiện một icon phát sáng ở hàng tiêu đề
 /// của mục — bên ngoài danh sách — bấm icon đó là tắt, không cần mở mục ra.
 struct ToolItem: Identifiable {
@@ -33,6 +34,7 @@ struct ToolItem: Identifiable {
 
 /// Mục "Công cụ": một thẻ như thẻ màn hình. Bấm hàng tiêu đề để sổ ra danh sách công cụ
 /// (accordion chung với danh sách chế độ của các màn: mở cái này thì cái kia đóng).
+/// Phần sổ ra cao tối đa `maxContentHeight` (và không quá chỗ còn lại trên màn), dài hơn thì cuộn bên trong.
 struct ToolsSection: View {
     @Environment(AppState.self) private var app
     @Environment(PanelLayout.self) private var layout
@@ -46,6 +48,8 @@ struct ToolsSection: View {
     static let rotateRowSpacing: CGFloat = 4
     static let mainRowHeight: CGFloat = 28
     static let mainRowSpacing: CGFloat = 8
+    /// Đủ cho danh sách 5 công cụ hoặc trang Sắp xếp; nhiều hơn thì cuộn, popover không dài thêm.
+    static let maxContentHeight: CGFloat = 264
 
     private var rotatable: [DisplaySnapshot] { app.displays.filter(\.canRotate) }
 
@@ -122,18 +126,25 @@ struct ToolsSection: View {
     var body: some View {
         let all = tools
         let open = layout.toolsOpen
-        let natural = listHeight(all)
-        // Màn thấp (vd màn tích hợp) không đủ chỗ: danh sách co lại và cuộn bên trong.
-        let height = DevTools.isSnapshot ? natural : min(natural, max(layout.toolsBudget, Self.rowHeight * 3))
+        // Trang riêng của một công cụ (Sắp xếp, Xoay…) thay chỗ danh sách, có nút quay lại.
+        let page = layout.openTool.flatMap { id in all.first { $0.id == id && Self.hasPage(id) } }
+        let natural = page.map { pageHeight(for: $0.id) } ?? listHeight(all)
+        // Không quá `maxContentHeight`, và màn thấp (vd màn tích hợp) thì không quá chỗ còn lại.
+        let height = DevTools.isSnapshot ? natural
+            : min(natural, Self.maxContentHeight, max(layout.toolsBudget, Self.rowHeight * 3))
+        let scrolls = natural > height + 0.5
         VStack(spacing: 0) {
             // + lề platter (2 × 10) và lề trên (8)
             header(all).measure { layout.toolsChromeHeight = $0 + 28 }
-            // Danh sách luôn nằm trong cây view; chỉ chiều cao được animate (giống danh sách chế độ).
-            Group {
-                if natural > height + 0.5 {
-                    ScrollView { list(all) }.scrollIndicators(.automatic)
+            // Nội dung luôn nằm trong cây view; chỉ chiều cao được animate (giống danh sách chế độ).
+            // Vào trang: danh sách trượt sang trái, trang vào từ phải; quay lại thì ngược lại.
+            ZStack(alignment: .top) {
+                if let page {
+                    scrollable(scrolls) { pageView(page) }
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 } else {
-                    list(all)
+                    scrollable(scrolls) { list(all) }
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
             }
                 .frame(height: open ? height : 0, alignment: .top)
@@ -147,23 +158,33 @@ struct ToolsSection: View {
         .padding(.top, 8)
     }
 
-    private func listHeight(_ all: [ToolItem]) -> CGFloat {
-        let n = all.count
-        let rows = CGFloat(n) * Self.rowHeight + CGFloat(max(n - 1, 0)) * Self.rowSpacing
-        let detail = layout.openTool.map { detailHeight(for: $0) } ?? 0
-        return Self.listTopPadding + rows + detail
+    @ViewBuilder private func scrollable<Content: View>(_ scrolls: Bool, @ViewBuilder _ content: () -> Content) -> some View {
+        if scrolls {
+            ScrollView { content() }.scrollIndicators(.automatic)
+        } else {
+            content()
+        }
     }
 
-    /// Chiều cao phần sổ ra của một công cụ, gồm khoảng hở phía trên.
-    private func detailHeight(for id: String) -> CGFloat {
+    static func hasPage(_ id: String) -> Bool { id == "arrange" || id == "rotate" }
+
+    private func listHeight(_ all: [ToolItem]) -> CGFloat {
+        let n = all.count
+        return Self.listTopPadding + CGFloat(n) * Self.rowHeight + CGFloat(max(n - 1, 0)) * Self.rowSpacing
+    }
+
+    /// Trang = hàng đầu trang (quay lại) + khung nội dung.
+    private func pageHeight(for id: String) -> CGFloat {
+        Self.listTopPadding + Self.rowHeight + Self.rowSpacing + 2 * Self.detailPadding + pageContentHeight(for: id)
+    }
+
+    private func pageContentHeight(for id: String) -> CGFloat {
         switch id {
         case "arrange":
-            let mainRow = app.displays.count > 1 ? Self.mainRowSpacing + Self.mainRowHeight : 0
-            return Self.rowSpacing + Self.mapHeight + mainRow + 2 * Self.detailPadding
+            return Self.mapHeight + (app.displays.count > 1 ? Self.mainRowSpacing + Self.mainRowHeight : 0)
         case "rotate":
             let n = CGFloat(rotatable.count)
-            return Self.rowSpacing + 2 * Self.detailPadding + n * Self.rotateRowHeight
-                + max(n - 1, 0) * Self.rotateRowSpacing
+            return n * Self.rotateRowHeight + max(n - 1, 0) * Self.rotateRowSpacing
         default:
             return 0
         }
@@ -213,48 +234,36 @@ struct ToolsSection: View {
         .animation(.smooth(duration: 0.25), value: active.map(\.id))
     }
 
-    // MARK: Danh sách
+    // MARK: Danh sách và trang
 
     private func list(_ all: [ToolItem]) -> some View {
         VStack(spacing: Self.rowSpacing) {
             ForEach(all) { item in
-                VStack(spacing: 0) {
-                    ToolRow(item: item, isOpen: layout.openTool == item.id) {
-                        switch item.kind {
-                        case .toggle(let value): value.wrappedValue.toggle()
-                        case .disclosure:
-                            withAnimation(PopoverView.expand) {
-                                layout.openTool = layout.openTool == item.id ? nil : item.id
-                            }
-                        }
+                ToolRow(item: item) {
+                    switch item.kind {
+                    case .toggle(let value): value.wrappedValue.toggle()
+                    case .disclosure: withAnimation(PopoverView.expand) { layout.openTool = item.id }
                     }
-                    detailBlock(for: item.id)
                 }
             }
         }
         .padding(.top, Self.listTopPadding)
     }
 
-    /// Phần sổ ra luôn nằm trong cây view; chỉ chiều cao được animate.
-    @ViewBuilder private func detailBlock(for id: String) -> some View {
-        let height = detailHeight(for: id)
-        if height > 0 {
-            let open = layout.openTool == id
-            detail(for: id)
+    private func pageView(_ item: ToolItem) -> some View {
+        VStack(spacing: Self.rowSpacing) {
+            ToolPageHeader(item: item) { withAnimation(PopoverView.expand) { layout.openTool = nil } }
+            pageContent(for: item.id)
                 .padding(Self.detailPadding)
+                .frame(maxWidth: .infinity)
                 .background {
                     RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.platter)
                 }
-                .padding(.top, Self.rowSpacing)
-                .frame(height: open ? height : 0, alignment: .top)
-                .clipped()
-                .opacity(open ? 1 : 0)
-                .allowsHitTesting(open)
-                .accessibilityHidden(!open)
         }
+        .padding(.top, Self.listTopPadding)
     }
 
-    @ViewBuilder private func detail(for id: String) -> some View {
+    @ViewBuilder private func pageContent(for id: String) -> some View {
         switch id {
         case "arrange": ArrangePanel()
         case "rotate": RotatePanel(displays: rotatable)
@@ -263,15 +272,54 @@ struct ToolsSection: View {
     }
 }
 
+/// Đầu trang riêng của một công cụ: cả hàng là nút quay lại danh sách (mũi tên trái), kèm biểu tượng,
+/// tên và trạng thái của công cụ.
+private struct ToolPageHeader: View {
+    let item: ToolItem
+    let back: () -> Void
+
+    var body: some View {
+        Button(action: back) {
+            HStack(spacing: 10) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Theme.chip))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                    Text(item.status).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: item.currentSymbol)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Theme.accentBlue))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: ToolsSection.rowHeight)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.platter)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Quay lại danh sách công cụ")
+        .accessibilityLabel("Quay lại danh sách công cụ")
+        .accessibilityValue(item.title)
+    }
+}
+
 /// Một hàng công cụ: vòng tròn biểu tượng + tên + trạng thái; bên phải là công tắc (bật/tắt)
-/// hoặc mũi tên (sổ ra). Bấm cả hàng là bật/tắt hoặc sổ ra.
+/// hoặc mũi tên (mở trang riêng). Bấm cả hàng là bật/tắt hoặc mở trang.
 private struct ToolRow: View {
     let item: ToolItem
-    let isOpen: Bool
     let action: () -> Void
 
     var body: some View {
-        let on = item.active || isOpen
+        let on = item.active
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: item.currentSymbol)
@@ -318,10 +366,9 @@ private struct ToolRow: View {
         case .toggle(let value):
             MiniSwitch(isOn: value.wrappedValue)
         case .disclosure:
-            Image(systemName: "chevron.down")
+            Image(systemName: "chevron.right")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(isOpen ? 180 : 0))
                 .frame(width: 22)
         }
     }

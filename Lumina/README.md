@@ -13,8 +13,8 @@
 - **Độ phân giải**: thanh trượt các mức cùng loại và cùng tỉ lệ + danh sách mọi chế độ; **công tắc HiDPI** (giữ kích thước nếu có); **chọn tỉ lệ** theo những gì màn hỗ trợ (5:4, 4:3, 16:10, 16:9, 21:9, 32:9…; "Gốc" là tỉ lệ tấm nền, vd MacBook có dải tai thỏ). Mọi thay đổi **tự hoàn tác sau 15 giây** nếu không bấm "Giữ".
 - **HDR** — công tắc "Dải động cao" cho màn ngoài hỗ trợ HDR (như trong Cài đặt hệ thống › Màn hình), ở đầu thẻ màn cả popover và cửa sổ.
 - **Màu cho tương xứng với Mac** (cửa sổ, màn ngoài): hồ sơ màu **Display P3** (cùng gam màu với màn Mac) và **điểm trắng R/G/B qua DDC** để chỉnh bằng mắt cho trắng giống Mac (D65), có nút Khôi phục về giá trị gốc. macOS chỉ có "chế độ màu" (preset tham chiếu) cho màn Apple; màn hãng khác chỉ có HDR + hồ sơ màu.
-- Popover **Liquid Glass** (macOS 26+), neo đúng dưới icon kể cả khi đổi độ phân giải; accordion; không cuộn giao diện chính — phần nào không đủ chỗ (danh sách chế độ, danh sách công cụ) thì tự co và cuộn bên trong.
-- **Công cụ** — một mục thu gọn, bấm là sổ ra danh sách. Công cụ nào đang có hiệu lực thì hiện icon phát sáng ở tiêu đề mục; bấm icon đó là tắt, không cần mở mục.
+- Popover **Liquid Glass** (macOS 26+), neo đúng dưới icon kể cả khi đổi độ phân giải hay đổi màn chính; accordion; không cuộn giao diện chính — phần nào không đủ chỗ (danh sách chế độ, danh sách công cụ) thì tự co và cuộn bên trong.
+- **Công cụ** — một mục thu gọn, bấm là sổ ra danh sách (cao có giới hạn, dài hơn thì cuộn bên trong). Công cụ có phần riêng (Sắp xếp, Xoay) mở thành trang thay chỗ danh sách, có nút quay lại. Công cụ nào đang có hiệu lực thì hiện icon phát sáng ở tiêu đề mục; bấm icon đó là tắt, không cần mở mục.
   - **Ngăn ngủ** — giữ màn hình và máy không tự ngủ khi để yên (IOPM assertion, tự gỡ khi tắt hoặc thoát app).
   - **Đồng bộ độ sáng** — các màn khác sáng bằng số nit (ước lượng) của màn tích hợp, bám theo cả phím độ sáng và chế độ tự chỉnh theo ánh sáng phòng. Mỗi màn có đường quy đổi riêng: MacBook Pro XDR ~1–600 nit theo cảm nhận (số đo: tối đa 540–646, tối thiểu 1,2 nit; 1000 nit chỉ khi môi trường sáng và bật tự chỉnh độ sáng — lúc đó Lumina không biết macOS đẩy thêm bao nhiêu), Kuycon P27G ~50–500 nit tuyến tính qua DDC (500 nit theo thông số bán lẻ). Chỉnh nit tối đa/tối thiểu trong cửa sổ; khi đang đồng bộ, kéo thanh của màn phụ cho khớp mắt thì Lumina nhớ mức bù đó.
   - **Sắp xếp màn hình** — bản đồ thu nhỏ, kéo-thả một màn (tự hít vào cạnh màn bên cạnh, không chồng) và **chọn màn chính** (menu bar, Dock).
@@ -65,7 +65,7 @@ Build, cài vào `/Applications` (thay bản cũ) rồi mở:
 scripts/bundle.sh --install && open /Applications/Lumina.app
 ```
 
-Chạy test logic (54 test):
+Chạy test logic (55 test):
 
 ```bash
 scripts/test.sh
@@ -80,6 +80,7 @@ build/Lumina.app/Contents/MacOS/Lumina --fit-test      # popover vừa màn tíc
 build/Lumina.app/Contents/MacOS/Lumina --sync-test     # đồng bộ độ sáng, đọc ngược DDC của màn ngoài
 build/Lumina.app/Contents/MacOS/Lumina --color-test    # HDR (popover ↔ cửa sổ), điểm trắng qua DDC, Display P3
 build/Lumina.app/Contents/MacOS/Lumina --profile       # đo bộ nhớ khi mở/đóng popover và cửa sổ nhiều lần (PROFILE_WINDOWS, PROFILE_IDLE)
+build/Lumina.app/Contents/MacOS/Lumina --main-trace [--builtin]   # đổi màn chính qua lại khi popover mở, kiểm tra popover vẫn neo dưới icon
 build/Lumina.app/Contents/MacOS/Lumina vcp <id> <mã hex> [giá trị]   # đọc/ghi một mã DDC/CI
 ```
 

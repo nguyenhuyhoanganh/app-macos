@@ -37,9 +37,9 @@ enum MonitorPanel {
         return manager?.value(forKey: "displays") as? [NSObject] ?? []
     }
 
-    /// Lệnh ghi (xoay, HDR) dùng MPDisplayMgr mới như System Settings mở lại: đối tượng của manager
-    /// dùng lại có thể cũ sau khi đổi chế độ màn (đo: xoay 180° sau khi đổi HiDPI không ăn). Ghi chỉ
-    /// xảy ra khi người dùng bấm nên rò nhỏ của `init` không đáng kể; đọc mỗi lần mở popover vẫn dùng chung.
+    /// Lệnh ghi (xoay, HDR) dùng MPDisplayMgr mới như trước nay (cách đã chạy ổn trên máy thật), không
+    /// dùng lại đối tượng cũ qua các lần đổi chế độ màn. Ghi chỉ xảy ra khi người dùng bấm nên rò nhỏ của
+    /// `init` không đáng kể; đọc mỗi lần mở popover mới dùng chung (chỗ rò chính).
     private static func mpDisplay(_ id: CGDirectDisplayID) -> NSObject? {
         guard isAvailable, let cls = NSClassFromString("MPDisplayMgr") as? NSObject.Type else { return nil }
         let fresh = cls.init()

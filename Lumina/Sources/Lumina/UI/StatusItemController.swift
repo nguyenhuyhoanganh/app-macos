@@ -16,8 +16,8 @@ final class PanelLayout {
     var toolsOpen = false {
         didSet { if toolsOpen { expandedDisplay = nil } }
     }
-    /// Phần riêng của một công cụ đang sổ ra trong mục Công cụ (bản đồ Sắp xếp, bảng Xoay…);
-    /// mỗi lúc chỉ một phần để popover không phải cuộn.
+    /// Trang riêng của một công cụ đang mở trong mục Công cụ (bản đồ Sắp xếp, bảng Xoay…), thay chỗ
+    /// danh sách công cụ; nil = đang ở danh sách.
     var openTool: String?
     var arrangeOpen: Bool {
         get { openTool == "arrange" }
@@ -112,11 +112,19 @@ final class StatusItemController: NSObject {
     // MARK: Mở / đóng
 
     @objc private func togglePanel(_ sender: Any?) {
-        if panel.isVisible { close() } else { open(from: NSApp.currentEvent?.window) }
+        if panel.isVisible { close() } else { open(on: Self.displayUnderMouse()) }
     }
 
-    func open(from window: NSWindow? = nil) {
-        anchorDisplay = (window ?? statusItem.button?.window)?.screen?.displayID
+    /// Màn có con trỏ = màn có menu bar vừa được bấm. Không lấy theo cửa sổ của sự kiện: cửa sổ icon
+    /// bản sao của màn khác có thể báo toạ độ rác.
+    private static func displayUnderMouse() -> CGDirectDisplayID? {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }?.displayID
+    }
+
+    /// Mở popover dưới icon trên màn `display` (nil: màn của icon thật).
+    func open(on display: CGDirectDisplayID?) {
+        anchorDisplay = display ?? statusItem.button?.window?.screen?.displayID
         reposition()
         panel.orderFrontRegardless()
         panel.makeKey()
@@ -129,13 +137,7 @@ final class StatusItemController: NSObject {
     /// Mở lại app từ Finder/Launchpad: hiện popover dưới icon trên màn đang có con trỏ.
     func openFromReopen() {
         guard !panel.isVisible else { return }
-        let mouse = NSEvent.mouseLocation
-        let icon = NSApp.windows.first {
-            String(describing: type(of: $0)).contains("StatusBarWindow")
-                && PopoverPlacement.isUsableAnchor($0.frame, screenFrame: $0.screen?.frame)
-                && $0.screen?.frame.contains(mouse) == true
-        }
-        open(from: icon)
+        open(on: Self.displayUnderMouse())
     }
 
     func close() {
@@ -187,30 +189,39 @@ final class StatusItemController: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    /// Icon dùng làm mốc: bản icon hiện nằm trên màn đã bấm; màn đó mất thì bản icon trên màn có con trỏ.
-    private func currentAnchor() -> NSWindow? {
-        let icons = NSApp.windows.filter {
-            String(describing: type(of: $0)).contains("StatusBarWindow")
-                && PopoverPlacement.isUsableAnchor($0.frame, screenFrame: $0.screen?.frame)
-        }
-        if let id = anchorDisplay, let w = icons.first(where: { $0.screen?.displayID == id }) { return w }
+    /// Mốc neo: khung icon trên màn đã bấm (màn đó mất thì màn có con trỏ).
+    /// Chỉ tin cửa sổ icon thật (`statusItem.button.window`, nằm trên menu bar đang hoạt động). Các
+    /// `NSStatusBarWindow` khác là bản sao cho menu bar màn khác và báo toạ độ rác sau khi đổi màn chính
+    /// (đo: sát mép phải màn) — neo theo chúng làm popover bị dí sang phải. Icon ở màn khác thì suy từ
+    /// icon thật theo khoảng cách tới mép phải (`PopoverPlacement.mirroredAnchor`).
+    private func currentAnchor() -> (frame: NSRect, screen: NSScreen)? {
+        guard let real = statusItem.button?.window, let realScreen = real.screen,
+              PopoverPlacement.isUsableAnchor(real.frame, screenFrame: realScreen.frame) else { return nil }
+        // Không tách Spaces theo màn: chỉ màn chính có menu bar, popover đi theo icon thật.
+        guard NSScreen.screensHaveSeparateSpaces else { return (real.frame, realScreen) }
         let mouse = NSEvent.mouseLocation
-        return icons.first(where: { $0.screen?.frame.contains(mouse) == true }) ?? icons.first
+        let target = anchorDisplay.flatMap { id in NSScreen.screens.first { $0.displayID == id } }
+            ?? NSScreen.screens.first { $0.frame.contains(mouse) } ?? realScreen
+        guard target != realScreen else { return (real.frame, realScreen) }
+        let frame = PopoverPlacement.mirroredAnchor(real.frame, from: realScreen.frame,
+                                                    sourceVisibleFrame: realScreen.visibleFrame,
+                                                    to: target.frame, targetVisibleFrame: target.visibleFrame)
+        return (frame, target)
     }
 
     /// Panel = khung cố định từ ngay dưới icon tới đáy màn; nội dung neo ở mép trên.
     func reposition() {
-        guard let anchor = currentAnchor(), let screen = anchor.screen else {
+        guard let (anchor, screen) = currentAnchor() else {
             // Icon đang ở toạ độ tạm trong lúc đổi mode: thử lại, không đặt panel theo toạ độ rác.
             if panel.isVisible { scheduleReposition(after: 0.25) }
             return
         }
         let visible = screen.visibleFrame
-        let limit = PopoverPlacement.maxHeight(anchor: anchor.frame, visibleFrame: visible)
+        let limit = PopoverPlacement.maxHeight(anchor: anchor, visibleFrame: visible)
         if layout.maxHeight != limit { layout.maxHeight = limit }
 
         // Đặt tấm kính như trước (ngay dưới icon, trong màn), rồi nới cửa sổ ra hai bên và lên trên.
-        let glass = PopoverPlacement.frame(anchor: anchor.frame, visibleFrame: visible,
+        let glass = PopoverPlacement.frame(anchor: anchor, visibleFrame: visible,
                                            size: CGSize(width: Theme.popoverWidth, height: limit))
         let i = Self.shadowInset
         let frame = NSRect(x: glass.minX - i, y: glass.minY, width: glass.width + 2 * i, height: glass.height + i)
@@ -235,6 +246,7 @@ final class StatusItemController: NSObject {
 
     // Cho công cụ chẩn đoán.
     var anchorFrame: NSRect? { currentAnchor()?.frame }
+    var anchorScreenFrame: NSRect? { currentAnchor()?.screen.frame }
     var panelFrame: NSRect { panel.frame }
     /// Khung tấm kính (cửa sổ trừ lề trong suốt).
     var glassFrame: NSRect {
@@ -242,13 +254,10 @@ final class StatusItemController: NSObject {
         return NSRect(x: f.minX + i, y: f.minY, width: f.width - 2 * i, height: f.height - i)
     }
     var panelContentView: NSView? { panel.contentView }
-    var panelScreenFrame: NSRect? { currentAnchor()?.screen?.visibleFrame }
+    var panelWindowNumber: Int { panel.windowNumber }
+    var panelScreenFrame: NSRect? { currentAnchor()?.screen.visibleFrame }
     func openOnExternalForTesting(builtIn: Bool = false) {
-        let icon = NSApp.windows.first {
-            String(describing: type(of: $0)).contains("StatusBarWindow")
-                && $0.screen?.displayID.map { (CGDisplayIsBuiltin($0) != 0) == builtIn } == true
-        }
-        open(from: icon)
+        open(on: NSScreen.screens.compactMap(\.displayID).first { (CGDisplayIsBuiltin($0) != 0) == builtIn })
     }
 }
 
