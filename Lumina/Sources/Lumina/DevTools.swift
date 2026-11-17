@@ -426,6 +426,15 @@ extension DevTools {
         return "\(value)"
     }
 
+    /// Nhấn qua trợ năng (như VoiceOver): dùng cho điều khiển gốc trong Form, nơi bấm vào chữ của
+    /// dòng không bật/tắt công tắc.
+    @discardableResult
+    static func axPress(_ label: String, in view: NSView?) -> Bool {
+        guard let el = axFind(label, in: view) else { print("✗ không thấy “\(label)”"); return false }
+        view?.window?.makeKey()
+        return el.accessibilityPerformPress?() ?? false
+    }
+
     /// Gửi chuột xuống/lên vào giữa phần tử — đi qua hit-testing thật của SwiftUI.
     @discardableResult
     static func axClick(_ label: String, in view: NSView?) -> Bool {
@@ -469,34 +478,33 @@ extension DevTools {
             (2.5, {
                     check("cửa sổ mở khi chạy", MainWindowController.shared.isVisible)
                     MainWindowController.shared.nav.selection = .display(ext.id) }),
-            (3.5, { axClick("Xoay \(name) 90 độ (cửa sổ)", in: win()) }),
-            (6.5, { check("xoay từ cửa sổ → màn xoay 90°", app.displays.first { $0.id == ext.id }?.rotation == 90)
-                    check("popover cập nhật: hàng Xoay ghi “\(axValue("Xoay màn hình", in: pop()) ?? "nil")”",
-                          axValue("Xoay màn hình", in: pop())?.contains("90°") == true)
+            (3.0, { c.openOnExternalForTesting(); c.layout.toolsOpen = true; c.layout.openTool = "rotate" }),
+            (4.0, { axClick("Xoay \(name) 90 độ", in: pop()) }),
+            (7.0, { check("xoay từ popover → màn xoay 90°", app.displays.first { $0.id == ext.id }?.rotation == 90)
+                    check("cửa sổ cập nhật: Xoay = “\(axValue("Xoay \(name) (cửa sổ)", in: win()) ?? "nil")”",
+                          axValue("Xoay \(name) (cửa sổ)", in: win())?.contains("90") == true)
                     check("thanh “Giữ…?” hiện ở cả popover và cửa sổ",
                           axFind("Hoàn tác", in: pop()) != nil && axFind("Hoàn tác", in: win()) != nil)
-                    // Bấm vào cửa sổ làm popover đóng (đúng hành vi); người dùng bấm icon menu bar để mở lại.
-                    check("popover tự đóng khi bấm sang cửa sổ", !c.isShown)
-                    c.openOnExternalForTesting() }),
-            (7.3, { axClick("Hoàn tác", in: pop()) }),
-            (9.8, { check("hoàn tác từ popover → màn về 0°", app.displays.first { $0.id == ext.id }?.rotation == 0)
-                    check("thanh “Giữ…?” ở cửa sổ biến mất theo", axFind("Hoàn tác", in: win()) == nil)
-                    app.preventSleep = true
-                    axClick("Ngăn ngủ", in: pop()) }),
-            (10.8, { check("tắt Ngăn ngủ từ popover", !app.preventSleep)
-                     MainWindowController.shared.nav.selection = .tools }),
-            (11.8, { check("cửa sổ cập nhật: Ngăn ngủ “\(axValue("Ngăn ngủ", in: win()) ?? "nil")”",
-                           axValue("Ngăn ngủ", in: win()) == "Tắt")
-                     axClick("Ngăn ngủ", in: win()) }),
-            (12.8, { check("bật Ngăn ngủ từ cửa sổ", app.preventSleep)
+                    axPress("Hoàn tác", in: win()) }),
+            (10.0, { check("hoàn tác từ cửa sổ → màn về 0°", app.displays.first { $0.id == ext.id }?.rotation == 0)
+                     check("thanh “Giữ…?” ở popover biến mất theo", axFind("Hoàn tác", in: pop()) == nil)
+                     app.preventSleep = true
+                     MainWindowController.shared.nav.selection = .tools
+                     c.openOnExternalForTesting() }),
+            (11.0, { axClick("Ngăn ngủ", in: pop()) }),
+            (12.0, { check("tắt Ngăn ngủ từ popover", !app.preventSleep)
+                     check("cửa sổ cập nhật: công tắc Ngăn ngủ = \(axValue("Ngăn ngủ", in: win()) ?? "nil")",
+                           axValue("Ngăn ngủ", in: win()) == "0")
+                     axPress("Ngăn ngủ", in: win()) }),
+            (13.0, { check("bật Ngăn ngủ từ cửa sổ", app.preventSleep)
                      check("popover hiện icon phát sáng theo", axFind("Tắt Ngăn ngủ", in: pop()) != nil) }),
-            (13.3, {
+            (13.6, {
                 if app.pending != nil { app.revertPending() }
                 if let e = app.displays.first(where: { $0.id == ext.id }), e.rotation != 0 { try? MonitorPanel.setRotation(e.id, degrees: 0) }
                 app.preventSleep = beforeSleep
                 MainWindowController.shared.close()
             }),
-            (14.3, { check("đóng cửa sổ → app trở lại chạy nền (không Dock)", NSApp.activationPolicy() == .accessory)
+            (14.6, { check("đóng cửa sổ → app trở lại chạy nền (không Dock)", NSApp.activationPolicy() == .accessory)
                      print(failures == 0 ? "TẤT CẢ ĐẠT" : "\(failures) lỗi")
                      exit(failures == 0 ? 0 : 1) }),
         ]
@@ -514,7 +522,11 @@ extension DevTools {
         switch pane {
         case "tools": MainWindowController.shared.nav.selection = .tools
         case "general": MainWindowController.shared.nav.selection = .general
+        case "builtin": MainWindowController.shared.nav.selection = app.displays.first { $0.isBuiltIn }.map { .display($0.id) }
         default: MainWindowController.shared.nav.selection = app.displays.first { !$0.isBuiltIn }.map { .display($0.id) }
+        }
+        if let h = ProcessInfo.processInfo.environment["SNAPSHOT_HEIGHT"].flatMap(Double.init) {
+            MainWindowController.shared.setContentSizeForSnapshot(NSSize(width: 920, height: h))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             guard let view = MainWindowController.shared.windowContentView?.superview ?? MainWindowController.shared.windowContentView,
@@ -666,6 +678,9 @@ extension DevTools {
             Task { @MainActor in done(await app.brightnessService.readVCP(code, on: ext0).map { Int($0.current) }) }
         }
         var wbBefore: WhiteBalance?
+        // Giá trị gốc đã lưu (của người dùng) — test không được làm mất nó.
+        let originalKey = "whiteBalance." + ext0.identity.key
+        let savedOriginal = UserDefaults.standard.data(forKey: originalKey)
 
         let steps: [(Double, () -> Void)] = [
             (1.0, { check("\(ext0.name) hỗ trợ HDR", ext0.hasHDR)
@@ -678,7 +693,7 @@ extension DevTools {
                     check(String(format: "màn nhận HDR: khoảng HDR %.0f×", edr()), edr() > 1)
                     check("cửa sổ hiện HDR bật theo (\(axValue("HDR \(ext0.name)", in: win()) ?? "nil"))",
                           ["1", "on"].contains(axValue("HDR \(ext0.name)", in: win()) ?? ""))
-                    axClick("HDR \(ext0.name)", in: win()) }),
+                    axPress("HDR \(ext0.name)", in: win()) }),
             (12.0, { check("tắt HDR từ cửa sổ", ext()?.hdrOn == false)
                      // NSScreen giữ khoảng HDR cũ trong cùng tiến trình sau khi tắt; đọc thẳng từ MonitorPanel.
                      check("màn về SDR (MonitorPanel: HDR \(MonitorPanel.info()[ext0.id]?.hdrOn == true ? "bật" : "tắt"))",
@@ -688,12 +703,15 @@ extension DevTools {
                      if var w = wbBefore { w.red += 1; app.setWhiteBalance(w, for: ext0) } }),
             (13.5, { readDDC(0x16) { r in
                          check("chỉnh Đỏ +1 → màn thật = \(r ?? -1)", r == (wbBefore?.red ?? -9) + 1)
-                         check("nhớ giá trị gốc để khôi phục", app.originalWhiteBalance(ext0) == wbBefore)
-                         app.restoreWhiteBalance(ext0)
+                         check("có giá trị gốc để khôi phục", app.originalWhiteBalance(ext0) != nil)
+                         // Trả đúng số lúc bắt đầu (không gọi Khôi phục: nó về giá trị gốc của người dùng)
+                         if let w = wbBefore { app.setWhiteBalance(w, for: ext0) }
                      } }),
             (15.0, { readDDC(0x16) { r in
-                         check("khôi phục → màn thật = \(r ?? -1)", r == wbBefore?.red)
-                         check("xoá giá trị gốc đã lưu", app.originalWhiteBalance(ext0) == nil)
+                         check("trả về như lúc đầu → màn thật = \(r ?? -1)", r == wbBefore?.red)
+                         // Giữ nguyên bản ghi giá trị gốc của người dùng như trước khi test
+                         if let savedOriginal { UserDefaults.standard.set(savedOriginal, forKey: originalKey) }
+                         else { UserDefaults.standard.removeObject(forKey: originalKey) }
                      }
                      app.useDisplayP3(ext0) }),
             (17.0, { check("hồ sơ màu = \(ColorService.profileName(ext0.id) ?? "nil")", ColorService.usesDisplayP3(ext0.id))

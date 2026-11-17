@@ -135,9 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 enum MenuBarIcon {
-    /// Template 18 pt: cùng ký hiệu với icon app — vòng tròn bao quanh mặt trời 8 tia, lõi ◐
-    /// (độ sáng/tương phản màn hình).
-    /// Đối xứng 4 hướng; thay cho vòng tròn + chấm cũ vốn trông giống nút ghi màn hình ⏺.
+    /// Template 18 pt: cùng hình với icon app — khối ba cánh (trefoil): viền ngoài + lõi đặc,
+    /// ba gân từ tâm ra ba cánh như góc một khối lập phương phát sáng.
     static let image: NSImage = {
         let img = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
             draw()
@@ -148,34 +147,33 @@ enum MenuBarIcon {
         return img
     }()
 
+    /// Ba cánh hướng lên, xuống-trái, xuống-phải (hệ toạ độ gốc trên-trái, y hướng xuống).
+    /// Giống `trefoil(...)` trong scripts/make-icon.swift (icon app), để hai icon cùng một hình.
+    static func trefoil(center c: NSPoint, tip R: CGFloat, notch r: CGFloat, tipHalf d: CGFloat, radius: CGFloat) -> NSBezierPath {
+        var pts: [NSPoint] = []
+        for k in 0..<3 {
+            let th = -CGFloat.pi / 2 + CGFloat(k) * 2 * .pi / 3
+            pts.append(NSPoint(x: c.x + R * cos(th - d), y: c.y + R * sin(th - d)))
+            pts.append(NSPoint(x: c.x + R * cos(th + d), y: c.y + R * sin(th + d)))
+            let nt = th + .pi / 3
+            pts.append(NSPoint(x: c.x + r * cos(nt), y: c.y + r * sin(nt)))
+        }
+        let path = NSBezierPath()
+        let n = pts.count
+        path.move(to: NSPoint(x: (pts[n - 1].x + pts[0].x) / 2, y: (pts[n - 1].y + pts[0].y) / 2))
+        for i in 0..<n { path.appendArc(from: pts[i], to: pts[(i + 1) % n], radius: radius) }
+        path.close()
+        return path
+    }
+
     /// Vẽ trong hệ toạ độ 18×18, gốc trên-trái.
     static func draw() {
         NSColor.black.set()
-        let c = NSPoint(x: 9, y: 9)
-        // Vòng tròn ngoài
-        let outer: CGFloat = 8.1
-        let ring = NSBezierPath(ovalIn: NSRect(x: c.x - outer, y: c.y - outer, width: 2 * outer, height: 2 * outer))
-        ring.lineWidth = 1.2
-        ring.stroke()
-        // Lõi ◐: vòng tròn + nửa trái đặc
-        let r: CGFloat = 2.5
-        let core = NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
-        core.lineWidth = 1.0
-        core.stroke()
-        let half = NSBezierPath()
-        half.move(to: NSPoint(x: c.x, y: c.y - r))
-        half.appendArc(withCenter: c, radius: r, startAngle: 270, endAngle: 90, clockwise: true)
-        half.close()
-        half.fill()
-        // 8 tia
-        for i in 0..<8 {
-            let a = Double(i) * .pi / 4
-            let ray = NSBezierPath()
-            ray.move(to: NSPoint(x: c.x + 4.1 * cos(a), y: c.y + 4.1 * sin(a)))
-            ray.line(to: NSPoint(x: c.x + 5.7 * cos(a), y: c.y + 5.7 * sin(a)))
-            ray.lineWidth = 1.2
-            ray.lineCapStyle = .round
-            ray.stroke()
-        }
+        let c = NSPoint(x: 9, y: 9.7)
+        let outer = trefoil(center: c, tip: 8.4, notch: 4.2, tipHalf: 0.30, radius: 1.5)
+        outer.lineWidth = 1.25
+        outer.lineJoinStyle = .round
+        outer.stroke()
+        trefoil(center: c, tip: 4.7, notch: 2.35, tipHalf: 0.31, radius: 0.8).fill()
     }
 }

@@ -20,7 +20,7 @@
   - **Sắp xếp màn hình** — bản đồ thu nhỏ, kéo-thả một màn (tự hít vào cạnh màn bên cạnh, không chồng) và **chọn màn chính** (menu bar, Dock).
   - **Phản chiếu màn hình** — bật: mọi màn hiện giống màn chính; tắt: mở rộng (extend), mỗi màn một desktop.
   - **Xoay màn hình** — 0°/90°/180°/270° cho từng màn (MonitorPanel, private); cũng tự hoàn tác sau 15 giây.
-- **Cửa sổ Lumina** — bấm Lumina.app trong Applications (hoặc nút cửa sổ trên popover) để mở cửa sổ tuỳ chỉnh đầy đủ: từng màn, công cụ, cài đặt chung. Cửa sổ và popover **dùng chung một trạng thái** nên đổi ở đâu cũng hiện ngay ở chỗ kia. Khi cửa sổ mở app hiện ở Dock; đóng cửa sổ thì trở lại chạy nền.
+- **Cửa sổ Lumina** — bấm Lumina.app trong Applications (hoặc nút cửa sổ trên popover) để mở cửa sổ tuỳ chỉnh đầy đủ kiểu Cài đặt hệ thống (Form grouped gốc của macOS): từng màn (số liệu, độ sáng, độ phân giải, bố cục, HDR và màu, độ sáng thật), công cụ, cài đặt chung. Cửa sổ và popover **dùng chung một trạng thái** nên đổi ở đâu cũng hiện ngay ở chỗ kia. Khi cửa sổ mở app hiện ở Dock; đóng cửa sổ thì trở lại chạy nền.
 - Không hiện ở Dock khi chạy nền, **mở cùng máy** (mở cùng máy thì chỉ chạy nền, không bật cửa sổ).
 - CLI: `Lumina list | get-brightness | set-brightness | set-resolution | arrange | login-item | vcp`.
 
@@ -30,14 +30,16 @@
 |---|---|
 | <img src="Resources/Icons/AppIcon-128.png" width="96" alt="Icon app"> <img src="Resources/Icons/AppIcon-64.png" width="48" alt=""> <img src="Resources/Icons/AppIcon-32.png" width="24" alt=""> <img src="Resources/Icons/AppIcon-16.png" width="16" alt=""> | <img src="Resources/Icons/MenuBarIcon@4x.png" width="36" alt="Icon menu bar"> <img src="Resources/Icons/MenuBarIcon@2x.png" width="18" alt=""> |
 
-- `Resources/AppIcon.svg` — nguồn của icon app, sinh bởi `scripts/make-icon-svg.py` (sửa script, không sửa tay).
-- `Resources/AppIcon.icns` — icon đóng vào app (đã commit sẵn, build không cần sinh lại).
-- `Resources/Icons/` — PNG các cỡ để xem, và `MenuBarIcon.svg` (icon menu bar được vẽ bằng code trong `MenuBarIcon.draw()`, file này cùng hình).
+Khối kính ba cánh màu chuyển cyan → xanh → tím trên nền sáng pastel, lõi phát sáng trắng (kiểu icon macOS 26/27).
 
-Đổi icon: sửa `scripts/make-icon-svg.py`, rồi
+- `scripts/make-icon.swift` — nguồn của icon: vẽ bằng CoreGraphics + CoreImage (lớp kính, ánh phản chiếu, quầng sáng, bóng đổ), xuất `Resources/AppIcon.icns` và PNG các cỡ.
+- `Resources/AppIcon.icns` — icon đóng vào app (đã commit sẵn, build không cần sinh lại).
+- `Resources/Icons/` — PNG các cỡ để xem. Icon menu bar vẽ bằng code trong `MenuBarIcon.draw()` (app) và `glyph()` (script), cùng hàm hình học `trefoil`.
+
+Đổi icon: sửa `scripts/make-icon.swift`, rồi
 
 ```bash
-python3 scripts/make-icon-svg.py && swift scripts/make-icon.swift
+swift scripts/make-icon.swift
 ```
 
 ## Build
