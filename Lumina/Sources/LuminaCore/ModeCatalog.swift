@@ -46,6 +46,24 @@ public enum ModeCatalog {
         return candidates.max { $0.refreshRate < $1.refreshRate }
     }
 
+    /// Độ phân giải để bật/tắt HiDPI cho màn đang ở `current`: giữ nguyên kích thước nếu loại kia có,
+    /// không thì lấy kích thước gần nhất cùng tỉ lệ, rồi gần nhất bất kỳ tỉ lệ.
+    /// `nil` khi màn đã đúng loại yêu cầu hoặc không có chế độ nào của loại kia.
+    public static func hidpiCounterpart(_ modes: [DisplayModeInfo], current: DisplayModeInfo, hidpi: Bool) -> Resolution? {
+        let cur = current.resolution
+        guard cur.isHiDPI != hidpi else { return nil }
+        let candidates = resolutions(modes).filter { $0.isHiDPI == hidpi }
+        if let same = candidates.first(where: { $0.width == cur.width && $0.height == cur.height }) { return same }
+        func nearest(_ list: [Resolution]) -> Resolution? {
+            // Gần nhất theo chiều rộng; bằng nhau thì lấy cái lớn hơn (nhiều chỗ hơn).
+            list.min { a, b in
+                let da = abs(a.width - cur.width), db = abs(b.width - cur.width)
+                return da != db ? da < db : a.width > b.width
+            }
+        }
+        return nearest(candidates.filter { sameAspect($0, cur) }) ?? nearest(candidates)
+    }
+
     static func sameAspect(_ a: Resolution, _ b: Resolution) -> Bool {
         abs(a.aspect - b.aspect) < 0.01
     }

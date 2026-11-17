@@ -9,23 +9,39 @@ final class PanelLayout {
     /// Chiều cao tối đa: từ ngay dưới icon tới đáy vùng dùng được của màn.
     var maxHeight: CGFloat = .greatestFiniteMagnitude
     /// Accordion: chỉ một phần được mở tại một thời điểm — danh sách chế độ của một màn,
-    /// hoặc bản đồ sắp xếp màn hình.
+    /// hoặc mục Công cụ.
     var expandedDisplay: CGDirectDisplayID? {
-        didSet { if expandedDisplay != nil { arrangeOpen = false } }
+        didSet { if expandedDisplay != nil { toolsOpen = false } }
     }
-    var arrangeOpen = false {
-        didSet { if arrangeOpen { expandedDisplay = nil } }
+    var toolsOpen = false {
+        didSet { if toolsOpen { expandedDisplay = nil } }
+    }
+    /// Phần riêng của một công cụ đang sổ ra trong mục Công cụ (bản đồ Sắp xếp, bảng Xoay…);
+    /// mỗi lúc chỉ một phần để popover không phải cuộn.
+    var openTool: String?
+    var arrangeOpen: Bool {
+        get { openTool == "arrange" }
+        set { openTool = newValue ? "arrange" : (openTool == "arrange" ? nil : openTool) }
     }
     /// Chiều cao phần không phải danh sách (đo từ layout, không phụ thuộc animation).
     var chromeHeight: CGFloat = 0
+    /// Phần cố định của mục Công cụ (tiêu đề + lề), không gồm danh sách bên trong.
+    var toolsChromeHeight: CGFloat = 0
     var cardBaseHeights: [CGDirectDisplayID: CGFloat] = [:]
     /// Gọi khi tấm kính đổi chiều cao đích (dùng cho công cụ chẩn đoán).
     @ObservationIgnored var onContentResize: ((CGFloat) -> Void)?
 
     /// Chỗ còn lại cho danh sách chế độ để cả popover vừa màn mà không cần cuộn giao diện chính.
     var listBudget: CGFloat {
-        let used = chromeHeight + cardBaseHeights.values.reduce(0, +)
+        // Mở danh sách chế độ thì mục Công cụ đóng (accordion): chỉ tính phần cố định của nó.
+        let used = chromeHeight + toolsChromeHeight + cardBaseHeights.values.reduce(0, +)
         return max(96, maxHeight - used - 8)
+    }
+
+    /// Chỗ còn lại cho danh sách công cụ: phần thừa ra mới cuộn (giao diện phụ), popover không vượt màn.
+    var toolsBudget: CGFloat {
+        let fixed = chromeHeight + toolsChromeHeight + cardBaseHeights.values.reduce(0, +)
+        return maxHeight - fixed - 8
     }
 }
 
@@ -88,6 +104,7 @@ final class StatusItemController: NSObject {
         nc.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         nc.addObserver(self, selector: #selector(anchorMoved(_:)), name: NSWindow.didMoveNotification, object: nil)
         nc.addObserver(self, selector: #selector(panelResignedKey), name: NSWindow.didResignKeyNotification, object: panel)
+        nc.addObserver(self, selector: #selector(willReconfigure), name: .luminaWillReconfigure, object: nil)
     }
 
     var isShown: Bool { panel.isVisible }
@@ -109,6 +126,18 @@ final class StatusItemController: NSObject {
         }
     }
 
+    /// Mở lại app từ Finder/Launchpad: hiện popover dưới icon trên màn đang có con trỏ.
+    func openFromReopen() {
+        guard !panel.isVisible else { return }
+        let mouse = NSEvent.mouseLocation
+        let icon = NSApp.windows.first {
+            String(describing: type(of: $0)).contains("StatusBarWindow")
+                && PopoverPlacement.isUsableAnchor($0.frame, screenFrame: $0.screen?.frame)
+                && $0.screen?.frame.contains(mouse) == true
+        }
+        open(from: icon)
+    }
+
     func close() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
@@ -117,7 +146,21 @@ final class StatusItemController: NSObject {
         outsideClickMonitor = nil
     }
 
+    /// Lúc Lumina vừa tự đổi cấu hình màn (màn chính, phản chiếu, xoay, độ phân giải).
+    private var lastReconfigure = Date.distantPast
+
+    @objc private func willReconfigure() { lastReconfigure = Date() }
+
     @objc private func panelResignedKey() {
+        // Đổi màn chính/phản chiếu làm hệ thống dựng lại màn và lấy focus khỏi panel trong chốc lát —
+        // không phải người dùng bấm ra ngoài, nên giữ popover và lấy lại focus.
+        if Date().timeIntervalSince(lastReconfigure) < 3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, self.panel.isVisible, NSApp.keyWindow == nil else { return }
+                self.panel.makeKey()
+            }
+            return
+        }
         // Bấm vào app khác thì đóng, như popover hệ thống. Thanh đếm ngược vẫn chạy trong AppState.
         close()
     }
@@ -200,9 +243,10 @@ final class StatusItemController: NSObject {
     }
     var panelContentView: NSView? { panel.contentView }
     var panelScreenFrame: NSRect? { currentAnchor()?.screen?.visibleFrame }
-    func openOnExternalForTesting() {
+    func openOnExternalForTesting(builtIn: Bool = false) {
         let icon = NSApp.windows.first {
-            String(describing: type(of: $0)).contains("StatusBarWindow") && $0.screen?.displayID.map { CGDisplayIsBuiltin($0) == 0 } == true
+            String(describing: type(of: $0)).contains("StatusBarWindow")
+                && $0.screen?.displayID.map { (CGDisplayIsBuiltin($0) != 0) == builtIn } == true
         }
         open(from: icon)
     }

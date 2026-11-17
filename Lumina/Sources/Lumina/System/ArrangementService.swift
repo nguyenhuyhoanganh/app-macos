@@ -28,4 +28,21 @@ struct ArrangementService {
         guard err == .success else { throw LuminaError.configuration(err) }
         return origins
     }
+
+    /// Đặt `display` làm màn chính (có menu bar và Dock): dịch cả bố cục để nó nằm ở (0,0),
+    /// vị trí tương đối giữa các màn giữ nguyên.
+    func makeMain(_ display: CGDirectDisplayID, in displays: [DisplaySnapshot]) throws {
+        let layout = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0.bounds) })
+        guard layout[display] != nil else { throw LuminaError.modeUnavailable }
+        let origins = ArrangementPlanner.normalize(layout, main: display)
+        var config: CGDisplayConfigRef?
+        var err = CGBeginDisplayConfiguration(&config)
+        guard err == .success, let config else { throw LuminaError.configuration(err) }
+        for (id, p) in origins {
+            err = CGConfigureDisplayOrigin(config, id, Int32(p.x), Int32(p.y))
+            guard err == .success else { CGCancelDisplayConfiguration(config); throw LuminaError.configuration(err) }
+        }
+        err = CGCompleteDisplayConfiguration(config, .permanently)
+        guard err == .success else { throw LuminaError.configuration(err) }
+    }
 }

@@ -14,6 +14,12 @@ struct DisplaySnapshot: Identifiable, Equatable {
     let bounds: CGRect
     let current: DisplayModeInfo
     let modes: [DisplayModeInfo]
+    /// Góc xoay hiện tại (0/90/180/270) và màn có cho xoay không.
+    let rotation: Int
+    let canRotate: Bool
+    /// Màn hỗ trợ HDR (công tắc "Dải động cao" của System Settings) và đang bật HDR.
+    let hasHDR: Bool
+    let hdrOn: Bool
 
     var diagonal: Double? {
         sizeMM.width > 0 ? diagonalInches(widthMM: sizeMM.width, heightMM: sizeMM.height) : nil
@@ -24,6 +30,8 @@ struct DisplaySnapshot: Identifiable, Equatable {
 @MainActor @Observable
 final class DisplayRegistry {
     private(set) var displays: [DisplaySnapshot] = []
+    /// Màn đang phản chiếu màn khác (không có trong `displays`).
+    private(set) var mirroring: [CGDirectDisplayID] = []
     @ObservationIgnored private var modeObjects: [CGDirectDisplayID: [Int32: CGDisplayMode]] = [:]
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
     @ObservationIgnored var onChange: (() -> Void)?
@@ -57,6 +65,7 @@ final class DisplayRegistry {
         guard CGGetOnlineDisplayList(16, &ids, &count) == .success else { return }
 
         var snapshots: [DisplaySnapshot] = []
+        let panel = MonitorPanel.info()
         var objects: [CGDirectDisplayID: [Int32: CGDisplayMode]] = [:]
         for id in ids.prefix(Int(count)) {
             // Màn đang mirror vào màn khác không điều khiển riêng được ở đây.
@@ -77,12 +86,18 @@ final class DisplayRegistry {
                 sizeMM: CGDisplayScreenSize(id),
                 bounds: CGDisplayBounds(id),
                 current: Self.info(currentMode),
-                modes: all.map(Self.info)
+                modes: all.map(Self.info),
+                rotation: MonitorPanel.rotation(id),
+                canRotate: panel[id]?.canRotate ?? false,
+                hasHDR: panel[id]?.hasHDR ?? false,
+                hdrOn: panel[id]?.hdrOn ?? false
             ))
         }
         snapshots.sort { a, b in a.isBuiltIn != b.isBuiltIn ? a.isBuiltIn : a.id < b.id }
 
         modeObjects = objects
+        let mirrored = ids.prefix(Int(count)).filter { CGDisplayMirrorsDisplay($0) != kCGNullDirectDisplay }
+        if mirrored != mirroring { mirroring = Array(mirrored) }
         if snapshots != displays {
             displays = snapshots
             onChange?()
@@ -114,4 +129,5 @@ final class DisplayRegistry {
 
 extension Notification.Name {
     static let luminaDisplaysChanged = Notification.Name("LuminaDisplaysChanged")
+    static let luminaWillReconfigure = Notification.Name("LuminaWillReconfigure")
 }

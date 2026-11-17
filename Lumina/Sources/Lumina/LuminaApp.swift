@@ -8,7 +8,15 @@ enum Entry {
         if let command = args.first, !command.hasPrefix("-") {
             exit(CLI.run(args))   // chế độ dòng lệnh, không mở giao diện
         }
-        LuminaApp.main()
+        // Vòng đời AppKit thuần, không dùng SwiftUI App: app không có scene/cửa sổ nào.
+        // (Trước đây `Settings { EmptyView() }` làm macOS mở một cửa sổ "Lumina Settings" trống
+        // mỗi khi bấm mở lại app trong Applications.) Icon menu bar + popover do StatusItemController quản lý.
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.accessory)   // không hiện ở Dock, giống LSUIElement
+        app.run()
+        withExtendedLifetime(delegate) {}
     }
 }
 
@@ -17,18 +25,30 @@ enum Shared {
     static let app = AppState()
 }
 
-struct LuminaApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-
-    // Icon menu bar + popover do StatusItemController quản lý (MenuBarExtra không neo lại khi đổi độ phân giải).
-    var body: some Scene {
-        Settings { EmptyView() }
-    }
-}
-
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previewWindow: NSWindow?
     @MainActor static var statusItem: StatusItemController?
+
+    /// Mở cùng máy (login item) thì chỉ chạy nền; người dùng tự mở app thì hiện cửa sổ.
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        launchedAsLoginItem = event?.eventID == AEEventID(kAEOpenApplication)
+            && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
+    }
+
+    /// Bấm mở Lumina.app trong Applications khi app đang chạy: mở cửa sổ Lumina.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            AppDelegate.statusItem?.close()
+            MainWindowController.shared.show()
+        }
+        return false
+    }
+
+    /// Đóng cửa sổ không thoát app: vẫn chạy nền trên menu bar.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     /// Cờ cho dev/kiểm thử:
     ///   --preview                         mở popover trong một cửa sổ thường
@@ -54,8 +74,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DevTools.sleepTest()
                 return
             }
+            if let i = args.firstIndex(of: "--window-snapshot"), let path = args[safe: i + 1] {
+                DevTools.windowSnapshot(to: path, pane: args[safe: i + 2] ?? "display")
+                return
+            }
+            if args.contains("--color-test") {
+                DevTools.colorTest()
+                return
+            }
+            if args.contains("--sync-test") {
+                DevTools.syncTest()
+                return
+            }
+            if args.contains("--fit-test") {
+                DevTools.fitTest()
+                return
+            }
+            if args.contains("--window-test") {
+                DevTools.windowSyncTest()
+                return
+            }
             if args.contains("--expand-test") {
                 DevTools.expandTest()
+                return
+            }
+            if args.contains("--tools-test") {
+                DevTools.toolsClickTest()
                 return
             }
             if let i = args.firstIndex(of: "--panel-snapshot"), let path = args[safe: i + 1] {
@@ -70,6 +114,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DevTools.snapshot(to: path, after: 2) { exit(0) }
                 return
             }
+        }
+        // Người dùng tự mở app (không phải mở cùng máy, không phải cờ dev): hiện cửa sổ ngay.
+        let devFlag = args.dropFirst().contains { $0.hasPrefix("--") }
+        if !devFlag && !launchedAsLoginItem {
+            MainActor.assumeIsolated { MainWindowController.shared.show() }
         }
         guard args.contains("--preview") else { return }
         MainActor.assumeIsolated {

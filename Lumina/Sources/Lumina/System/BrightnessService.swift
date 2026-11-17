@@ -78,6 +78,15 @@ final class BrightnessService {
         CGSetDisplayTransferByTable(id, UInt32(n), table, table, table)
     }
 
+    /// Đọc/ghi một mã DDC/CI bất kỳ (vd độ lợi R/G/B 0x16/0x18/0x1A).
+    func readVCP(_ code: UInt8, on d: DisplaySnapshot) async -> DDCPacket.Reply? {
+        await ddc[d.id]?.read(code)
+    }
+
+    func writeVCP(_ code: UInt8, value: UInt16, on d: DisplaySnapshot) {
+        ddc[d.id]?.write(code, value: value)
+    }
+
     /// Trả màu về mặc định khi thoát app.
     func restoreSoftwareDimming() {
         if softwareLevel.values.contains(where: { $0 < 0.999 }) { CGDisplayRestoreColorSyncSettings() }

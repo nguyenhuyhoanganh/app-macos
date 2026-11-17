@@ -55,6 +55,38 @@ func m(_ id: Int32, _ w: Int, _ h: Int, hidpi: Bool = false, hz: Double = 60, gu
         #expect(ModeCatalog.bestMode(for: r, preferredRefresh: 50, in: ms)?.id == 1)
         #expect(ModeCatalog.bestMode(for: r, preferredRefresh: 75, in: ms)?.id == 2)
     }
+
+    // MARK: Công tắc HiDPI
+
+    @Test func hidpiOffKeepsSameSizeWhenAvailable() {
+        let cur = m(41, 2560, 1440, hidpi: true)
+        let ms = [cur, m(42, 2560, 1440), m(45, 3200, 1800), m(30, 1920, 1080)]
+        #expect(ModeCatalog.hidpiCounterpart(ms, current: cur, hidpi: false)
+                == Resolution(width: 2560, height: 1440, isHiDPI: false))
+    }
+
+    @Test func hidpiOnPicksNearestSizeOfSameAspect() {
+        // Màn 4K đang 3840×2160 thường: không có 3840×2160 HiDPI → lấy mức HiDPI cùng tỉ lệ gần nhất.
+        let cur = m(49, 3840, 2160)
+        let ms = [cur, m(41, 2560, 1440, hidpi: true), m(46, 3200, 1800, hidpi: true),
+                  m(20, 1920, 1200, hidpi: true), m(21, 2880, 1800, hidpi: true)]
+        #expect(ModeCatalog.hidpiCounterpart(ms, current: cur, hidpi: true)
+                == Resolution(width: 3200, height: 1800, isHiDPI: true))
+    }
+
+    @Test func hidpiFallsBackToNearestSizeOfAnyAspect() {
+        let cur = m(1, 1600, 1200)
+        let ms = [cur, m(2, 1920, 1080, hidpi: true), m(3, 1280, 720, hidpi: true)]
+        #expect(ModeCatalog.hidpiCounterpart(ms, current: cur, hidpi: true)?.label == "1920 × 1080")
+    }
+
+    @Test func hidpiNoChangeWhenAlreadyInRequestedKindOrNoModes() {
+        let cur = m(1, 1920, 1080, hidpi: true)
+        #expect(ModeCatalog.hidpiCounterpart([cur, m(2, 1920, 1080)], current: cur, hidpi: true) == nil)
+        #expect(ModeCatalog.hidpiCounterpart([cur, m(3, 1280, 720, hidpi: true)], current: cur, hidpi: false) == nil)
+        // Mode không dùng cho desktop không được tính
+        #expect(ModeCatalog.hidpiCounterpart([cur, m(4, 1920, 1080, gui: false)], current: cur, hidpi: false) == nil)
+    }
 }
 
 @Suite struct DisplayIdentityTests {
@@ -249,5 +281,111 @@ func m(_ id: Int32, _ w: Int, _ h: Int, hidpi: Bool = false, hz: Double = 60, gu
         let n = ArrangementPlanner.normalize(layout, main: 1)
         #expect(n[1] == .zero)
         #expect(n[5] == CGPoint(x: 1512, y: -40))
+    }
+}
+
+@Suite struct AspectRatioTests {
+    // Mode thật (rút gọn) của Kuycon P27G và MacBook 14".
+    let kuycon = [m(1, 1280, 1024), m(2, 1152, 870), m(3, 1600, 1200), m(4, 800, 600, hidpi: true),
+                  m(5, 1680, 1050), m(6, 840, 525, hidpi: true), m(7, 2560, 1440, hidpi: true),
+                  m(8, 3840, 2160), m(9, 1920, 1080, hidpi: true)]
+    let macbook = [m(1, 1512, 982, hidpi: true), m(2, 3024, 1964), m(3, 1512, 945, hidpi: true),
+                   m(4, 1147, 716, hidpi: true), m(5, 3024, 1890), m(6, 1800, 1125, hidpi: true)]
+
+    @Test func kuyconGroupsNarrowToWide() {
+        #expect(ModeCatalog.aspectGroups(kuycon).map(\.label) == ["5:4", "4:3", "16:10", "16:9"])
+    }
+
+    @Test func macbookNativeNotchAspectIsGoc() {
+        let groups = ModeCatalog.aspectGroups(macbook)
+        #expect(groups.map(\.label) == ["Gốc", "16:10"], "\(groups)")
+    }
+
+    @Test func ultrawideLabels() {
+        #expect(ModeCatalog.aspectLabel(3440.0 / 1440, native: nil) == "21:9")
+        #expect(ModeCatalog.aspectLabel(2560.0 / 1080, native: nil) == "21:9")
+        #expect(ModeCatalog.aspectLabel(3840.0 / 1600, native: nil) == "21:9")
+        #expect(ModeCatalog.aspectLabel(5120.0 / 1440, native: nil) == "32:9")
+        #expect(ModeCatalog.aspectLabel(1.85, native: nil) == "1.85:1")
+    }
+
+    @Test func switchingAspectKeepsHeightClose() {
+        let cur = m(7, 2560, 1440, hidpi: true)
+        let groups = ModeCatalog.aspectGroups(kuycon)
+        let g43 = groups.first { $0.label == "4:3" }!
+        #expect(ModeCatalog.resolution(for: g43, modes: kuycon, current: cur)?.label == "1600 × 1200")
+        let g169 = groups.first { $0.label == "16:9" }!
+        #expect(ModeCatalog.resolution(for: g169, modes: kuycon, current: cur) == nil)
+    }
+
+    @Test func macbookToSixteenTenPrefersSameKind() {
+        let cur = m(1, 1512, 982, hidpi: true)
+        let g = ModeCatalog.aspectGroups(macbook).first { $0.label == "16:10" }!
+        #expect(ModeCatalog.resolution(for: g, modes: macbook, current: cur)
+                == Resolution(width: 1512, height: 945, isHiDPI: true))
+    }
+}
+
+@Suite struct BrightnessSyncTests {
+    @Test func nitsRoundTrip() {
+        for p in [NitsProfile.macBookXDR, .kuyconP27G, .externalSoftware] {
+            for v in stride(from: 0.0, through: 1.0, by: 0.1) {
+                #expect(abs(p.value(forNits: p.nits(at: v)) - v) < 1e-9)
+            }
+        }
+    }
+
+    @Test func macBookCurveIsPerceptual() {
+        #expect(NitsProfile.macBookXDR.nits(at: 1) == 600)
+        // Nửa thanh trượt ≈ 22% độ sáng thật, không phải 50%.
+        #expect(abs(NitsProfile.macBookXDR.nits(at: 0.5) - (2 + 598 * pow(0.5, 2.2))) < 1e-9)
+        #expect(NitsProfile.macBookXDR.nits(at: 0.5) < 140)
+    }
+
+    @Test func kuyconFollowsMacBookNits() {
+        // MacBook 56% ≈ 168 nit → Kuycon (50…500 nit tuyến tính) ≈ 26%.
+        let v = BrightnessSync.target(sourceValue: 0.56, source: .macBookXDR, target: .kuyconP27G)
+        let nits = NitsProfile.kuyconP27G.nits(at: v)
+        #expect(abs(nits - NitsProfile.macBookXDR.nits(at: 0.56)) < 1e-6)
+        #expect(v > 0.2 && v < 0.35)
+    }
+
+    @Test func clampsWhenTargetCannotGoThatDarkOrBright() {
+        #expect(BrightnessSync.target(sourceValue: 0.05, source: .macBookXDR, target: .kuyconP27G) == 0)
+        #expect(BrightnessSync.target(sourceValue: 1, source: .macBookXDR, target: .kuyconP27G) == 1)
+    }
+
+    @Test func sourceBrighterOrDarkerThanTargetCanReach() {
+        // MacBook 100% = 600 nit > Kuycon tối đa 500 → Kuycon kịch max, MacBook vẫn kéo tiếp được.
+        #expect(BrightnessSync.limit(sourceValue: 1, source: .macBookXDR, target: .kuyconP27G) == .atMax)
+        #expect(BrightnessSync.target(sourceValue: 1, source: .macBookXDR, target: .kuyconP27G) == 1)
+        // MacBook rất tối (< 50 nit) → Kuycon đứng ở mức tối nhất.
+        #expect(BrightnessSync.limit(sourceValue: 0.2, source: .macBookXDR, target: .kuyconP27G) == .atMin)
+        #expect(BrightnessSync.target(sourceValue: 0.2, source: .macBookXDR, target: .kuyconP27G) == 0)
+        #expect(BrightnessSync.limit(sourceValue: 0.6, source: .macBookXDR, target: .kuyconP27G) == .none)
+    }
+
+    @Test func draggingToTheEndsIsNotCalibration() {
+        #expect(!BrightnessSync.isCalibrationDrag(1))
+        #expect(!BrightnessSync.isCalibrationDrag(0))
+        #expect(BrightnessSync.isCalibrationDrag(0.4))
+    }
+
+    @Test func manualAdjustmentBecomesRelativeOffset() {
+        // Đang đồng bộ, người dùng kéo Kuycon sáng hơn cho khớp mắt → lần sau vẫn giữ độ lệch đó.
+        var kuy = NitsProfile.kuyconP27G
+        kuy.ratio = BrightnessSync.ratio(sourceValue: 0.56, source: .macBookXDR, targetValue: 0.4, target: kuy)
+        #expect(kuy.ratio > 1)
+        #expect(abs(BrightnessSync.target(sourceValue: 0.56, source: .macBookXDR, target: kuy) - 0.4) < 1e-9)
+    }
+
+    @Test func defaultsByDisplay() {
+        #expect(NitsProfile.defaults(name: "Kuycon P27G", isBuiltIn: false, hardwareControl: true) == .kuyconP27G)
+        #expect(NitsProfile.defaults(name: "Built-in Liquid Retina XDR Display", isBuiltIn: true, hardwareControl: false) == .macBookXDR)
+        #expect(NitsProfile.defaults(name: "Built-in Liquid Retina Display", isBuiltIn: true, hardwareControl: false) == .builtIn)
+        // MacBook Pro M5 Pro thật: macOS gọi là "Built-in Retina Display" nhưng khoảng HDR 16× → XDR 600 nit.
+        #expect(NitsProfile.defaults(name: "Built-in Retina Display", isBuiltIn: true, hardwareControl: false, hdrHeadroom: 16) == .macBookXDR)
+        #expect(NitsProfile.defaults(name: "Built-in Retina Display", isBuiltIn: true, hardwareControl: false, hdrHeadroom: 1) == .builtIn)
+        #expect(NitsProfile.defaults(name: "DELL U2720Q", isBuiltIn: false, hardwareControl: true) == .externalDDC)
     }
 }

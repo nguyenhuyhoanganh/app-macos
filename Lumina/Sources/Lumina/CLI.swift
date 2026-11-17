@@ -9,6 +9,7 @@ import LuminaCore
 ///   Lumina set-resolution <displayID> <WxH> [--lowres]
 ///   Lumina login-item [on|off]      (chạy binary bên trong Lumina.app)
 ///   Lumina arrange <displayID> <x> <y>   (đặt màn vào toạ độ, tự hít cạnh)
+///   Lumina vcp <displayID> <mã hex> [giá trị]   (đọc/ghi một mã DDC/CI, vd 0x14 = chế độ màu)
 @MainActor
 enum CLI {
     static func run(_ args: [String]) -> Int32 {
@@ -37,6 +38,20 @@ enum CLI {
                 slider=\(ModeCatalog.sliderModes(d.modes, current: d.current).map(\.label).joined(separator: ", "))
                 """)
             }
+            return 0
+
+        case "vcp":
+            guard let d = display(args[safe: 1]), let codeArg = args[safe: 2],
+                  let code = UInt8(codeArg.replacingOccurrences(of: "0x", with: ""), radix: 16) else {
+                fputs("Cách dùng: Lumina vcp <displayID> <mã hex> [giá trị]\n", stderr); return 2
+            }
+            guard let channel = brightness.ddc[d.id] else { fputs("Màn này không có DDC.\n", stderr); return 3 }
+            if let valueArg = args[safe: 3], let value = UInt16(valueArg) {
+                channel.write(code, value: value)
+                Thread.sleep(forTimeInterval: 0.4)
+            }
+            guard let reply = wait({ await channel.read(code) }) else { print("không trả lời"); return 4 }
+            print("0x\(String(code, radix: 16)) = \(reply.current) / tối đa \(reply.maximum)")
             return 0
 
         case "get-brightness":

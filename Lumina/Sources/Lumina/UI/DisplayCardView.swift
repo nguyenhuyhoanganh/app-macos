@@ -66,6 +66,13 @@ struct DisplayCardView: View {
                 Text(subtitle).font(.system(size: 11.5)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            if display.hasHDR {
+                // Như công tắc "Dải động cao" trong Cài đặt hệ thống › Màn hình.
+                Toggle("HDR", isOn: Binding(get: { display.hdrOn }, set: { app.setHDR(display, on: $0) }))
+                    .glassSwitch(fill: false)
+                    .help("Dải động cao (HDR) — như trong Cài đặt hệ thống › Màn hình")
+                    .accessibilityLabel("HDR \(display.name)")
+            }
             if brightnessState?.kind == .hardware { Chip(text: "DDC", prominent: true) }
         }
     }
@@ -90,6 +97,13 @@ struct DisplayCardView: View {
                 case .system: Chip(text: "Hệ thống")
                 case .hardware: Chip(text: "Phần cứng", prominent: true)
                 case .software: Chip(text: "Phần mềm")
+                }
+                if app.brightnessSync, let nits = app.nits(for: display) {
+                    let limit = app.syncLimit(for: display)
+                    Text("≈ \(Int(nits.rounded())) nit" + (limit == .atMax ? " · kịch max" : limit == .atMin ? " · tối nhất" : ""))
+                        .monospacedDigit().foregroundStyle(.secondary)
+                        .help(display.id == app.syncSource?.id ? "Màn chuẩn của Đồng bộ độ sáng"
+                                                               : "Đang đồng bộ theo \(app.syncSource.map(ToolsSection.shortName) ?? "màn chuẩn")")
                 }
                 Text("\(Int((brightness * 100).rounded()))%")
                     .monospacedDigit().frame(width: 36, alignment: .trailing)
@@ -120,6 +134,7 @@ struct DisplayCardView: View {
             ControlHeader(title: "Độ phân giải") {
                 Text(shown.label).monospacedDigit()
                 Text(detail(for: shown)).foregroundStyle(.secondary)
+                hidpiSwitch.padding(.leading, 4)
             }
             if modes.count > 1 {
                 HStack(spacing: 8) {
@@ -136,6 +151,27 @@ struct DisplayCardView: View {
                         .accessibilityLabel("Nhiều chỗ hơn")
                 }
             }
+            aspectRow
+        }
+    }
+
+    /// Tỉ lệ khung hình có trên màn (16:9, 16:10, 21:9…). Chọn tỉ lệ khác → đổi sang độ phân giải
+    /// của tỉ lệ đó có chiều cao gần nhất; thanh trượt sau đó đi theo tỉ lệ mới.
+    @ViewBuilder private var aspectRow: some View {
+        let groups = ModeCatalog.aspectGroups(display.modes)
+        if groups.count > 1 {
+            HStack(spacing: 8) {
+                Text("Tỉ lệ").font(.system(size: 12)).foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                SegmentedChips(options: groups.map(\.label),
+                               selected: groups.firstIndex { $0.contains(display.current.resolution) },
+                               accessibilityLabel: { "Tỉ lệ \(groups[$0].label) \(display.name)" }) { i in
+                    if let r = ModeCatalog.resolution(for: groups[i], modes: display.modes, current: display.current) {
+                        app.select(r, on: display)
+                    }
+                }
+            }
+            .padding(.top, 4)
         }
     }
 
@@ -144,9 +180,23 @@ struct DisplayCardView: View {
     }
 
     private func detail(for r: Resolution) -> String {
-        var s = r.isHiDPI ? "· HiDPI" : ""
-        if r == display.current.resolution { s += " · \(Int(display.current.refreshRate.rounded())) Hz" }
-        return s
+        r == display.current.resolution ? "· \(Int(display.current.refreshRate.rounded())) Hz" : ""
+    }
+
+    /// Công tắc HiDPI: đổi giữa chế độ HiDPI và thường, giữ kích thước nếu có (xem
+    /// `ModeCatalog.hidpiCounterpart`). Đi qua `app.select` nên cũng tự hoàn tác sau 15 giây.
+    private var hidpiSwitch: some View {
+        let isOn = display.current.resolution.isHiDPI
+        let target = ModeCatalog.hidpiCounterpart(display.modes, current: display.current, hidpi: !isOn)
+        return Toggle("HiDPI", isOn: Binding(
+            get: { isOn },
+            set: { _ in if let target { app.select(target, on: display) } }))
+            .glassSwitch(fill: false)
+            .disabled(target == nil)
+            .help(target.map { isOn ? "Tắt HiDPI: chuyển sang \($0.label) thường"
+                                    : "Bật HiDPI: chuyển sang \($0.label) HiDPI (nét hơn)" }
+                  ?? (isOn ? "Màn này không có chế độ thường" : "Màn này không có chế độ HiDPI"))
+            .accessibilityLabel("HiDPI \(display.name)")
     }
 
     private func syncFromDisplay() {

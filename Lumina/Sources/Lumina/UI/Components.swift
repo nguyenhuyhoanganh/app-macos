@@ -78,3 +78,41 @@ struct GlassSwitchStyle: ToggleStyle {
 extension View {
     func glassSwitch(fill: Bool = true) -> some View { toggleStyle(GlassSwitchStyle(fill: fill)) }
 }
+
+/// Nhóm lựa chọn nhỏ kiểu segmented (góc xoay, tỉ lệ, màn chính): nền xám, mục đang chọn tô xanh.
+struct SegmentedChips: View {
+    let options: [String]
+    let selected: Int?
+    /// Rộng cố định mỗi mục (vd 40 cho "270°"); `nil` = theo chữ.
+    var itemWidth: CGFloat?
+    var accessibilityLabel: (Int) -> String = { _ in "" }
+    let pick: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options.indices, id: \.self) { i in
+                let on = i == selected
+                Button { pick(i) } label: {
+                    Text(options[i])
+                        .font(.system(size: 11, weight: on ? .semibold : .regular))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .foregroundStyle(on ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                        .padding(.horizontal, itemWidth == nil ? 8 : 0)
+                        .frame(width: itemWidth, height: 24)
+                        .background {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(on ? AnyShapeStyle(Theme.accentBlue) : AnyShapeStyle(Color.clear))
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(accessibilityLabel(i).isEmpty ? options[i] : accessibilityLabel(i))
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.chip))
+        .animation(.smooth(duration: 0.2), value: selected)
+    }
+}
