@@ -35,7 +35,9 @@ public struct NitsProfile: Codable, Hashable, Sendable {
 
     /// Màn tích hợp MacBook Pro (Liquid Retina XDR): SDR trong nhà tối đa ~600 nit
     /// (1000 nit chỉ khi ngoài trời, máy tự đẩy lên); thanh độ sáng theo cảm nhận.
-    public static let macBookXDR = NitsProfile(minNits: 2, maxNits: 600, gamma: 2.2)
+    /// Số đo: Notebookcheck (14″ M5) tối đa 646 / tối thiểu 1,2 cd/m²; Tom's Guide 558 (M5), 540 (M5 Pro).
+    /// Đường cong thanh trượt → nit không có số công bố: mũ 2,2 vẫn là ước lượng.
+    public static let macBookXDR = NitsProfile(minNits: 1, maxNits: 600, gamma: 2.2)
     /// Màn tích hợp khác (MacBook Air…): ~500 nit.
     public static let builtIn = NitsProfile(minNits: 2, maxNits: 500, gamma: 2.2)
     /// Kuycon P27G (4K 27″ IPS): 500 nit theo thông số bán lẻ; DDC tăng đèn nền gần tuyến tính.

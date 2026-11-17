@@ -75,6 +75,7 @@ final class AppState {
     // MARK: Nhận diện màn
 
     private func displaysChanged() {
+        migrateLegacyKeys()
         brightnessService.rescan(registry.displays)
         let ids = Set(registry.displays.map(\.id))
         brightness = brightness.filter { ids.contains($0.key) }
@@ -90,7 +91,10 @@ final class AppState {
                 guard let self else { return }
                 let state = await self.brightnessService.read(d)
                 self.brightness[d.id] = state
-                if self.brightnessSync, d.id == self.syncSource?.id { self.syncBrightness() }
+                // Đồng bộ sau khi đọc xong BẤT KỲ màn nào: màn tích hợp đọc rất nhanh, DDC của màn ngoài
+                // về sau. Nếu chỉ đồng bộ khi đọc xong màn chuẩn thì lúc đó chưa có độ sáng màn ngoài,
+                // và màn ngoài cứ đứng nguyên mức cũ tới khi màn chuẩn đổi (lỗi đã gặp sau khi khởi động).
+                if self.brightnessSync { self.syncBrightness() }
             }
         }
     }
@@ -142,6 +146,13 @@ final class AppState {
         return NitsProfile.defaults(name: screen?.localizedName ?? d.name, isBuiltIn: d.isBuiltIn,
                                     hardwareControl: brightness[d.id]?.kind != .software,
                                     hdrHeadroom: Double(screen?.maximumPotentialExtendedDynamicRangeColorComponentValue ?? 1))
+    }
+
+    /// Màn chuẩn đang bật "Tự động điều chỉnh độ sáng": khi phòng sáng, macOS có thể đẩy màn sáng thêm
+    /// (tới ~1000 nit) mà thanh độ sáng không đổi — Lumina không thấy phần đó nên màn kia có thể lệch.
+    var syncSourceAutoBrightness: Bool {
+        guard let source = syncSource else { return false }
+        return PrivateAPI.isAutoBrightnessOn(source.id) ?? false
     }
 
     /// Màn này đang đứng ở giới hạn vì màn chuẩn sáng/tối hơn mức nó làm được.
@@ -203,6 +214,29 @@ final class AppState {
                 self.syncBrightness()
             }
         }
+    }
+
+    /// Cài đặt lưu theo khoá cũ (unit number, đổi sau mỗi lần khởi động) → chuyển sang khoá ổn định.
+    /// Chỉ chuyển khi đang cắm đúng MỘT màn cùng hãng + model, để không gán nhầm giữa hai màn giống hệt.
+    private func migrateLegacyKeys() {
+        let defaults = UserDefaults.standard
+        for d in registry.displays where d.identity.serial == 0 && d.identity.uuid != nil {
+            let same = registry.displays.filter { $0.identity.vendor == d.identity.vendor && $0.identity.model == d.identity.model }
+            guard same.count == 1 else { continue }
+            let prefix = d.identity.legacyKeyPrefix, key = d.identity.key
+            if nitsProfiles[key] == nil, let old = nitsProfiles.keys.sorted().first(where: { $0.hasPrefix(prefix) }) {
+                nitsProfiles[key] = nitsProfiles[old]
+            }
+            nitsProfiles = nitsProfiles.filter { !$0.key.hasPrefix(prefix) }
+            if defaults.data(forKey: "whiteBalance." + key) == nil,
+               let old = defaults.dictionaryRepresentation().keys.first(where: { $0.hasPrefix("whiteBalance." + prefix) }) {
+                defaults.set(defaults.data(forKey: old), forKey: "whiteBalance." + key)
+            }
+            for old in defaults.dictionaryRepresentation().keys where old.hasPrefix("whiteBalance." + prefix) {
+                defaults.removeObject(forKey: old)
+            }
+        }
+        Self.saveProfiles(nitsProfiles)
     }
 
     private static func loadProfiles() -> [String: NitsProfile] {

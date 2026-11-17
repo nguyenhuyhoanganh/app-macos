@@ -24,6 +24,8 @@ struct ToolItem: Identifiable {
     var active = false
     var quickOff: (() -> Void)?
     var quickOffLabel = ""
+    /// Ghi chú cảnh báo nhỏ (icon ⚠︎ cạnh công tắc, nội dung khi rê chuột).
+    var note: String?
 
     var currentSymbol: String { active ? activeSymbol ?? symbol : symbol }
     var showsBadge: Bool { active && quickOff != nil }
@@ -82,7 +84,10 @@ struct ToolsSection: View {
                                       set: { on in withAnimation(.smooth(duration: 0.25)) { app.brightnessSync = on } })),
                 active: app.brightnessSync,
                 quickOff: { withAnimation(.smooth(duration: 0.25)) { app.brightnessSync = false } },
-                quickOffLabel: "Tắt đồng bộ độ sáng"), at: 1)
+                quickOffLabel: "Tắt đồng bộ độ sáng",
+                note: app.brightnessSync && app.syncSourceAutoBrightness
+                    ? "\(Self.shortName(source)) đang bật “Tự động điều chỉnh độ sáng”: khi phòng sáng, macOS có thể đẩy màn sáng thêm (tới ~1000 nit) mà thanh độ sáng không đổi, nên các màn khác có thể tối hơn. Tắt nó trong Cài đặt hệ thống › Màn hình để đồng bộ chính xác."
+                    : nil), at: 1)
         }
         if app.canMirror {
             let main = app.displays.first(where: \.isMain).map(Self.shortName) ?? "màn chính"
@@ -302,6 +307,13 @@ private struct ToolRow: View {
     }
 
     @ViewBuilder private var trailing: some View {
+        if let note = item.note {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+                .help(note)
+                .accessibilityLabel("Lưu ý: \(note)")
+        }
         switch item.kind {
         case .toggle(let value):
             MiniSwitch(isOn: value.wrappedValue)

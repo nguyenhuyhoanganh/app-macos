@@ -79,7 +79,10 @@ final class DisplayRegistry {
             snapshots.append(DisplaySnapshot(
                 id: id,
                 identity: DisplayIdentity(vendor: CGDisplayVendorNumber(id), model: CGDisplayModelNumber(id),
-                                          serial: CGDisplaySerialNumber(id), unitNumber: CGDisplayUnitNumber(id)),
+                                          serial: CGDisplaySerialNumber(id), unitNumber: CGDisplayUnitNumber(id),
+                                          uuid: CGDisplayCreateUUIDFromDisplayID(id).flatMap {
+                                              CFUUIDCreateString(nil, $0.takeRetainedValue()) as String?
+                                          }),
                 name: Self.name(for: id, builtIn: builtIn),
                 isBuiltIn: builtIn,
                 isMain: CGDisplayIsMain(id) != 0,

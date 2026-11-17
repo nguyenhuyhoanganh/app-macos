@@ -90,13 +90,22 @@ func m(_ id: Int32, _ w: Int, _ h: Int, hidpi: Bool = false, hz: Double = 60, gu
 }
 
 @Suite struct DisplayIdentityTests {
+    @Test func keyWithoutSerialSurvivesRestart() {
+        // Kuycon không có serial; sau khi khởi động lại macOS đổi unit number 4 → 3, UUID giữ nguyên.
+        let before = DisplayIdentity(vendor: 11961, model: 624, serial: 0, unitNumber: 4, uuid: "2EB97002-0000-0000-0B22-0104B53C2278")
+        let after = DisplayIdentity(vendor: 11961, model: 624, serial: 0, unitNumber: 3, uuid: "2EB97002-0000-0000-0B22-0104B53C2278")
+        #expect(before.key == after.key)
+        #expect(before.legacyKey == "11961-624-u4")
+        #expect(after.legacyKey.hasPrefix(before.legacyKeyPrefix))
+    }
+
     @Test func keyUsesSerialWhenPresent() {
         #expect(DisplayIdentity(vendor: 1, model: 2, serial: 3, unitNumber: 9).key == "1-2-3")
     }
 
     @Test func twoIdenticalMonitorsWithoutSerialGetDifferentKeys() {
-        let a = DisplayIdentity(vendor: 1, model: 2, serial: 0, unitNumber: 4)
-        let b = DisplayIdentity(vendor: 1, model: 2, serial: 0, unitNumber: 5)
+        let a = DisplayIdentity(vendor: 1, model: 2, serial: 0, unitNumber: 4, uuid: "AAAA")
+        let b = DisplayIdentity(vendor: 1, model: 2, serial: 0, unitNumber: 5, uuid: "BBBB")
         #expect(a.key != b.key)
     }
 
@@ -338,7 +347,7 @@ func m(_ id: Int32, _ w: Int, _ h: Int, hidpi: Bool = false, hz: Double = 60, gu
     @Test func macBookCurveIsPerceptual() {
         #expect(NitsProfile.macBookXDR.nits(at: 1) == 600)
         // Nửa thanh trượt ≈ 22% độ sáng thật, không phải 50%.
-        #expect(abs(NitsProfile.macBookXDR.nits(at: 0.5) - (2 + 598 * pow(0.5, 2.2))) < 1e-9)
+        #expect(abs(NitsProfile.macBookXDR.nits(at: 0.5) - (1 + 599 * pow(0.5, 2.2))) < 1e-9)
         #expect(NitsProfile.macBookXDR.nits(at: 0.5) < 140)
     }
 

@@ -10,6 +10,7 @@ enum PrivateAPI {
     typealias DSGet = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
     typealias DSSet = @convention(c) (CGDirectDisplayID, Float) -> Int32
     typealias DSCan = @convention(c) (CGDirectDisplayID) -> Bool
+    typealias DSAutoEnabled = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Bool>) -> Int32
 
     private static let displayServicesPath = "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
 
@@ -20,6 +21,16 @@ enum PrivateAPI {
     static let displayServicesGetBrightness: DSGet? = symbol("DisplayServicesGetBrightness", in: displayServicesPath)
     static let displayServicesSetBrightness: DSSet? = symbol("DisplayServicesSetBrightness", in: displayServicesPath)
     static let displayServicesCanChangeBrightness: DSCan? = symbol("DisplayServicesCanChangeBrightness", in: displayServicesPath)
+    /// "Tự động điều chỉnh độ sáng" (cảm biến ánh sáng môi trường). Kiểu (màn, &kết quả) → mã lỗi, 0 = ok.
+    static let displayServicesAutoBrightnessEnabled: DSAutoEnabled? =
+        symbol("DisplayServicesAmbientLightCompensationEnabled", in: displayServicesPath)
+
+    /// `nil` khi không đọc được (thiếu hàm hoặc màn không có cảm biến).
+    static func isAutoBrightnessOn(_ id: CGDirectDisplayID) -> Bool? {
+        guard let fn = displayServicesAutoBrightnessEnabled else { return nil }
+        var on = false
+        return fn(id, &on) == 0 ? on : nil
+    }
 
     static var hasDDC: Bool { avServiceCreate != nil && avServiceWriteI2C != nil && avServiceReadI2C != nil }
 

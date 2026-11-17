@@ -369,6 +369,12 @@ private struct NitsCard: View {
                     }
                 }
             }
+            if isSource && app.syncSourceAutoBrightness {
+                Label("“Tự động điều chỉnh độ sáng” đang bật: khi phòng sáng, macOS có thể đẩy màn này sáng thêm (tới ~1000 nit) mà thanh độ sáng không đổi — Lumina không thấy phần đó nên màn khác có thể tối hơn. Tắt trong Cài đặt hệ thống › Màn hình để đồng bộ chính xác.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11)).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text(isSource
                  ? "Màn chuẩn: các màn khác bám theo số nit của màn này (kể cả khi chỉnh bằng phím độ sáng)."
                  : "Số nit là ước lượng theo thông số hãng. Khi đang đồng bộ, kéo thanh độ sáng của màn này cho khớp mắt — Lumina nhớ mức bù đó.")

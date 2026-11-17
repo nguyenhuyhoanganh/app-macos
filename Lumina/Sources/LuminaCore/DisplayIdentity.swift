@@ -6,18 +6,30 @@ public struct DisplayIdentity: Hashable, Codable, Sendable {
     public let model: UInt32
     public let serial: UInt32
     public let unitNumber: UInt32
+    /// UUID của màn do macOS cấp (`CGDisplayCreateUUIDFromDisplayID`) — ổn định qua các lần khởi động,
+    /// ColorSync cũng dùng nó để nhớ hồ sơ màu. Hai màn giống hệt cắm hai cổng có UUID khác nhau.
+    public let uuid: String?
 
-    public init(vendor: UInt32, model: UInt32, serial: UInt32, unitNumber: UInt32) {
+    public init(vendor: UInt32, model: UInt32, serial: UInt32, unitNumber: UInt32, uuid: String? = nil) {
         self.vendor = vendor
         self.model = model
         self.serial = serial
         self.unitNumber = unitNumber
+        self.uuid = uuid
     }
 
-    /// Khi serial = 0 (nhiều màn rẻ không ghi serial) thì thêm unit number để hai màn giống hệt không lẫn nhau.
+    /// Khoá để nhớ cài đặt của từng màn. Có serial thì dùng serial; không có (nhiều màn rẻ, vd Kuycon)
+    /// thì dùng UUID. Không dùng unit number: macOS đánh số lại sau mỗi lần khởi động (đã gặp: u4 → u3),
+    /// làm mất cài đặt đã lưu.
     public var key: String {
-        serial == 0 ? "\(vendor)-\(model)-u\(unitNumber)" : "\(vendor)-\(model)-\(serial)"
+        if serial != 0 { return "\(vendor)-\(model)-\(serial)" }
+        if let uuid { return "\(vendor)-\(model)-\(uuid)" }
+        return legacyKey
     }
+
+    /// Khoá cũ (theo unit number), chỉ để chuyển cài đặt đã lưu sang khoá mới.
+    public var legacyKey: String { "\(vendor)-\(model)-u\(unitNumber)" }
+    public var legacyKeyPrefix: String { "\(vendor)-\(model)-u" }
 
     /// Mã hãng 3 chữ cái theo EDID (vd 0x2EB9 → "KUY").
     public var vendorCode: String? { EDID.manufacturerCode(vendor) }
