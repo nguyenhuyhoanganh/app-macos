@@ -21,14 +21,32 @@ enum MonitorPanel {
 
     static var canRotateAtAll: Bool { responds(setOrientation) }
 
-    /// Tạo mới mỗi lần: danh sách màn của MPDisplayMgr chụp lúc khởi tạo, không tự cập nhật khi cắm/rút.
+    /// Dùng lại một MPDisplayMgr; chỉ tạo mới khi danh sách màn đang cắm đổi (danh sách màn của nó
+    /// chụp lúc khởi tạo, không tự cập nhật khi cắm/rút). Không tạo mới mỗi lần: `-[MPDisplayMgr init]`
+    /// rò một NSMutableArray mỗi lần gọi (đo bằng `leaks`), mà danh sách màn nạp lại mỗi lần mở popover.
+    private static var manager: NSObject?
+    private static var managerDisplayIDs: [CGDirectDisplayID] = []
+
     private static func displays() -> [NSObject] {
         guard isAvailable, let cls = NSClassFromString("MPDisplayMgr") as? NSObject.Type else { return [] }
-        return cls.init().value(forKey: "displays") as? [NSObject] ?? []
+        let online = MirrorService.onlineDisplays()
+        if manager == nil || online != managerDisplayIDs {
+            manager = cls.init()
+            managerDisplayIDs = online
+        }
+        return manager?.value(forKey: "displays") as? [NSObject] ?? []
     }
 
+    /// Lệnh ghi (xoay, HDR) dùng MPDisplayMgr mới như System Settings mở lại: đối tượng của manager
+    /// dùng lại có thể cũ sau khi đổi chế độ màn (đo: xoay 180° sau khi đổi HiDPI không ăn). Ghi chỉ
+    /// xảy ra khi người dùng bấm nên rò nhỏ của `init` không đáng kể; đọc mỗi lần mở popover vẫn dùng chung.
     private static func mpDisplay(_ id: CGDirectDisplayID) -> NSObject? {
-        displays().first { ($0.value(forKey: "displayID") as? NSNumber)?.uint32Value == id }
+        guard isAvailable, let cls = NSClassFromString("MPDisplayMgr") as? NSObject.Type else { return nil }
+        let fresh = cls.init()
+        manager = fresh
+        managerDisplayIDs = MirrorService.onlineDisplays()
+        return (fresh.value(forKey: "displays") as? [NSObject])?
+            .first { ($0.value(forKey: "displayID") as? NSNumber)?.uint32Value == id }
     }
 
     struct Info: Equatable {

@@ -214,6 +214,7 @@ final class AppState {
                 self.syncBrightness()
             }
         }
+        syncTimer?.tolerance = 0.05   // cho macOS gộp lần thức với timer khác (tiết kiệm pin), trễ thêm ≤ 50 ms
     }
 
     /// Cài đặt lưu theo khoá cũ (unit number, đổi sau mỗi lần khởi động) → chuyển sang khoá ổn định.

@@ -65,7 +65,7 @@ Build, cài vào `/Applications` (thay bản cũ) rồi mở:
 scripts/bundle.sh --install && open /Applications/Lumina.app
 ```
 
-Chạy test logic (49 test):
+Chạy test logic (54 test):
 
 ```bash
 scripts/test.sh
@@ -79,6 +79,7 @@ build/Lumina.app/Contents/MacOS/Lumina --window-test   # cửa sổ ↔ popover 
 build/Lumina.app/Contents/MacOS/Lumina --fit-test      # popover vừa màn tích hợp khi mở hết
 build/Lumina.app/Contents/MacOS/Lumina --sync-test     # đồng bộ độ sáng, đọc ngược DDC của màn ngoài
 build/Lumina.app/Contents/MacOS/Lumina --color-test    # HDR (popover ↔ cửa sổ), điểm trắng qua DDC, Display P3
+build/Lumina.app/Contents/MacOS/Lumina --profile       # đo bộ nhớ khi mở/đóng popover và cửa sổ nhiều lần (PROFILE_WINDOWS, PROFILE_IDLE)
 build/Lumina.app/Contents/MacOS/Lumina vcp <id> <mã hex> [giá trị]   # đọc/ghi một mã DDC/CI
 ```
 

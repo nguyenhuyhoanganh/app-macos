@@ -87,6 +87,7 @@ enum DDCDiscovery {
         var found: [DDCChannel] = []
         var iterator: io_iterator_t = 0
         let root = IORegistryGetRootEntry(kIOMainPortDefault)
+        defer { IOObjectRelease(root) }   // người gọi phải giải phóng gốc (tài liệu IOKit)
         guard IORegistryEntryCreateIterator(root, kIOServicePlane, IOOptionBits(kIORegistryIterateRecursively), &iterator) == KERN_SUCCESS else {
             return [:]
         }

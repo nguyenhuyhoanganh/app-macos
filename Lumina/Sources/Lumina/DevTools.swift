@@ -727,3 +727,54 @@ extension DevTools {
         }
     }
 }
+
+extension DevTools {
+    /// Bộ nhớ thật của tiến trình (phys_footprint, MB) — số mà Activity Monitor gọi là "Memory".
+    static func footprintMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+    }
+
+    /// Đo tài nguyên: mở/đóng popover 15 lần, mở cửa sổ + chuyển trang + đóng 5 lần, rồi ngồi yên
+    /// `PROFILE_IDLE` giây (mặc định 40) để đo `leaks`/CPU từ ngoài. In bộ nhớ sau mỗi giai đoạn.
+    static func profile() {
+        guard let c = AppDelegate.statusItem else { exit(2) }
+        let app = Shared.app
+        let idle = ProcessInfo.processInfo.environment["PROFILE_IDLE"].flatMap(Double.init) ?? 40
+        var t = 1.0
+        func at(_ dt: Double, _ f: @escaping () -> Void) {
+            t += dt
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) { MainActor.assumeIsolated { f() } }
+        }
+        at(0) { print(String(format: "bắt đầu: %.1f MB", footprintMB())) }
+        for i in 0..<15 {
+            at(0.35) { c.openOnExternalForTesting(); c.layout.toolsOpen = i % 2 == 0; c.layout.openTool = i % 3 == 0 ? "arrange" : nil }
+            at(0.35) { c.close() }
+        }
+        at(0.5) { print(String(format: "sau 15 lần mở/đóng popover: %.1f MB", footprintMB())) }
+        let windowCycles = ProcessInfo.processInfo.environment["PROFILE_WINDOWS"].flatMap(Int.init) ?? 5
+        for k in 0..<windowCycles {
+            if k == 5 || k == 10 {
+                at(0.6) { print(String(format: "sau \(k) lần mở/đóng cửa sổ: %.1f MB · cửa sổ còn tồn tại: \(NSApp.windows.count)", footprintMB())) }
+            }
+            at(0.4) { MainWindowController.shared.show(); MainWindowController.shared.nav.selection = app.displays.first.map { .display($0.id) } }
+            at(0.6) { MainWindowController.shared.nav.selection = app.displays.last.map { .display($0.id) } }
+            at(0.6) { MainWindowController.shared.nav.selection = .tools }
+            at(0.6) { MainWindowController.shared.nav.selection = .general }
+            at(0.4) { MainWindowController.shared.close() }
+        }
+        at(1.5) {
+            print(String(format: "sau \(windowCycles) lần mở/đóng cửa sổ: %.1f MB · cửa sổ còn tồn tại: \(NSApp.windows.count)", footprintMB()))
+            print("PROFILE_READY pid=\(ProcessInfo.processInfo.processIdentifier)")
+            fflush(stdout)
+        }
+        at(idle) {
+            print(String(format: "cuối (đã ngồi yên %.0f s): %.1f MB", idle, footprintMB()))
+            exit(0)
+        }
+    }
+}

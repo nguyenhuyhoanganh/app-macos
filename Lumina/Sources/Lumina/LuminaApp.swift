@@ -78,6 +78,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DevTools.windowSnapshot(to: path, pane: args[safe: i + 2] ?? "display")
                 return
             }
+            if args.contains("--profile") {
+                DevTools.profile()
+                return
+            }
             if args.contains("--color-test") {
                 DevTools.colorTest()
                 return
